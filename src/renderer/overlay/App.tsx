@@ -1,0 +1,166 @@
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import type { AppState, StateUpdate } from '../../shared/types';
+import { startRecording, type RecordingHandle } from './recorder/media-recorder';
+import { StatusBadge } from './components/StatusBadge';
+import { Waveform } from './components/Waveform';
+import { errorBeep, startBeep, stopBeep } from './sounds/beeps';
+
+const labels: Record<AppState, string> = {
+  idle: 'Ready',
+  recording: 'กำลังบันทึก…',
+  processing: 'กำลังแปลง…',
+  injecting: 'กำลังวาง…',
+  success: 'เสร็จแล้ว',
+  error: 'เกิดข้อผิดพลาด'
+};
+
+const backgrounds: Record<AppState, string> = {
+  idle: 'rgba(13, 27, 42, 0.85)',
+  recording: 'rgba(255, 59, 48, 0.92)',
+  processing: 'rgba(36, 134, 255, 0.92)',
+  injecting: 'rgba(36, 134, 255, 0.92)',
+  success: 'rgba(52, 199, 89, 0.92)',
+  error: 'rgba(255, 149, 0, 0.95)'
+};
+
+export default function App(): JSX.Element {
+  const [state, setState] = useState<AppState>('idle');
+  const [text, setText] = useState<string>('');
+  const [message, setMessage] = useState<string>('');
+  const [elapsedSec, setElapsedSec] = useState<number>(0);
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  const handleRef = useRef<RecordingHandle | null>(null);
+  const lastStateRef = useRef<AppState>('idle');
+
+  // Subscribe to main-process events.
+  useEffect(() => {
+    const offStart = window.voiceToText.recording.onStart(async () => {
+      try {
+        startBeep();
+        const handle = await startRecording();
+        handleRef.current = handle;
+        setAnalyser(handle.analyser);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('mic access failed', err);
+        window.voiceToText.recording.cancel();
+      }
+    });
+
+    const offStop = window.voiceToText.recording.onStop(async () => {
+      stopBeep();
+      const handle = handleRef.current;
+      handleRef.current = null;
+      setAnalyser(null);
+      if (!handle) return;
+      try {
+        const { data, mimeType } = await handle.stop();
+        window.voiceToText.recording.sendAudio(data, mimeType);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('recorder stop failed', err);
+        window.voiceToText.recording.cancel();
+      }
+    });
+
+    const offState = window.voiceToText.state.onUpdate((update: StateUpdate) => {
+      // Play error sound on first transition into error state.
+      if (update.state === 'error' && lastStateRef.current !== 'error') {
+        errorBeep();
+      }
+      lastStateRef.current = update.state;
+      setState(update.state);
+      setText(update.text ?? '');
+      setMessage(update.message ?? '');
+    });
+
+    return () => {
+      offStart();
+      offStop();
+      offState();
+    };
+  }, []);
+
+  // Recording timer.
+  useEffect(() => {
+    if (state !== 'recording') {
+      setElapsedSec(0);
+      return;
+    }
+    const start = performance.now();
+    const id = window.setInterval(() => {
+      setElapsedSec(Math.floor((performance.now() - start) / 1000));
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [state]);
+
+  const containerStyle: CSSProperties = {
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+    color: '#F8FAFD',
+    background: backgrounds[state],
+    borderRadius: 14,
+    padding: '12px 16px',
+    margin: 8,
+    height: 'calc(100% - 16px)',
+    boxSizing: 'border-box',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    fontSize: 13,
+    lineHeight: 1.3,
+    boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
+    backdropFilter: 'blur(12px)'
+  };
+
+  const titleRow: CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    fontWeight: 600
+  };
+
+  const subtleRow: CSSProperties = {
+    fontSize: 11,
+    opacity: 0.85,
+    marginTop: 2,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  };
+
+  const stateText =
+    state === 'recording' ? `${labels[state]} ${formatTime(elapsedSec)}` : labels[state];
+
+  const subText = state === 'success' ? text : state === 'error' ? message || 'Unknown error' : '';
+
+  return (
+    <>
+      <style>{`
+        @keyframes pulse {
+          0%   { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0.45); }
+          70%  { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
+          100% { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0); }
+        }
+        body, html, #root { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden; }
+      `}</style>
+      <div style={containerStyle}>
+        <StatusBadge state={state} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={titleRow}>{stateText}</div>
+          {subText && <div style={subtleRow}>{subText}</div>}
+        </div>
+        {state === 'recording' && analyser && (
+          <Waveform analyser={analyser} width={96} height={36} />
+        )}
+      </div>
+    </>
+  );
+}
+
+function formatTime(sec: number): string {
+  const mm = Math.floor(sec / 60)
+    .toString()
+    .padStart(1, '0');
+  const ss = (sec % 60).toString().padStart(2, '0');
+  return `${mm}:${ss}`;
+}

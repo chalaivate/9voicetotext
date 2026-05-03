@@ -1,0 +1,74 @@
+{
+  "name": "9voicetotext",
+  "version": "0.1.0",
+  "description": "Cross-platform voice-to-text desktop app. Speak naturally. Type instantly. Anywhere.",
+  "main": "./out/main/index.js",
+  "author": "9Expert Training <info@9expert.co.th>",
+  "license": "MIT",
+  "homepage": "https://github.com/9expert-training/9voicetotext",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css,html}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:win": "npm run build && electron-builder --win",
+    "build:all": "npm run build && electron-builder -mw",
+    "release": "npm run build && electron-builder -mw --publish always",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,html,css}": [
+      "prettier --write"
+    ]
+  },
+  "dependencies": {
+    "electron-store": "^10.0.0",
+    "keytar": "^7.9.0",
+    "lucide-react": "^0.400.0",
+    "node-key-sender": "^1.0.11",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "uiohook-napi": "^1.5.4",
+    "undici": "^6.0.0",
+    "winston": "^3.13.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@electron-toolkit/eslint-config-ts": "^2.0.0",
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@playwright/test": "^1.45.0",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.19",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.0",
+    "electron-vite": "^2.3.0",
+    "eslint": "^8.57.0",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.7",
+    "postcss": "^8.4.38",
+    "prettier": "^3.3.0",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.3.0",
+    "vitest": "^1.6.0"
+  }
+}
