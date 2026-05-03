@@ -23,10 +23,12 @@ export interface WhisperClient {
   transcribe(req: WhisperRequest): Promise<TranscribeResult>;
 }
 
-export function createWhisperClient(getApiKey: () => string | undefined): WhisperClient {
+export type ApiKeyGetter = () => string | undefined | Promise<string | undefined | null>;
+
+export function createWhisperClient(getApiKey: ApiKeyGetter): WhisperClient {
   return {
     async transcribe(req: WhisperRequest): Promise<TranscribeResult> {
-      const apiKey = getApiKey();
+      const apiKey = await getApiKey();
       if (!apiKey) {
         throw new WhisperError('no-api-key', 'OpenAI API key is not configured.');
       }

@@ -10,7 +10,21 @@ export const IPC = {
   },
   settings: {
     get: 'settings:get',
-    set: 'settings:set'
+    set: 'settings:set',
+    reset: 'settings:reset',
+    changed: 'settings:changed'
+  },
+  secrets: {
+    setApiKey: 'secrets:setApiKey',
+    hasApiKey: 'secrets:hasApiKey',
+    deleteApiKey: 'secrets:deleteApiKey',
+    testApiKey: 'secrets:testApiKey',
+    keyMask: 'secrets:keyMask'
+  },
+  windows: {
+    openSettings: 'windows:openSettings',
+    openHistory: 'windows:openHistory',
+    closeSelf: 'windows:closeSelf'
   },
   history: {
     list: 'history:list',

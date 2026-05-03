@@ -4,10 +4,17 @@ import type { AppState } from '@shared/types';
 import { logger } from '@main/utils/logger';
 import { trayIcon } from './icons';
 
+export interface TrayDeps {
+  openSettings: () => void;
+  openHistory?: () => void;
+}
+
 export class TrayManager {
   private tray: Tray | null = null;
+  private deps: TrayDeps | null = null;
 
-  init(): void {
+  init(deps: TrayDeps): void {
+    this.deps = deps;
     this.tray = new Tray(trayIcon('idle'));
     this.tray.setToolTip(APP_NAME);
     this.refreshMenu('idle');
@@ -27,6 +34,8 @@ export class TrayManager {
 
   private refreshMenu(state: AppState): void {
     if (!this.tray) return;
+    const deps = this.deps;
+    if (!deps) return;
 
     const stateLabel: Record<AppState, string> = {
       idle: 'Idle',
@@ -42,6 +51,17 @@ export class TrayManager {
       { type: 'separator' },
       { label: `Status: ${stateLabel[state]}`, enabled: false },
       { label: `Hotkey: ${DEFAULT_HOTKEY}`, enabled: false },
+      { type: 'separator' },
+      {
+        label: 'Settings…',
+        accelerator: 'CommandOrControl+,',
+        click: () => deps.openSettings()
+      },
+      {
+        label: 'History…',
+        enabled: !!deps.openHistory,
+        click: () => deps.openHistory?.()
+      },
       { type: 'separator' },
       {
         label: `Quit ${APP_NAME}`,

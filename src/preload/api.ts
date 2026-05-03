@@ -10,6 +10,40 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): Unsubscr
   return () => ipcRenderer.off(channel, wrapper);
 }
 
+// Mirror of Settings type from @main/store/settings.ts. Keeping a separate
+// declaration here avoids dragging the full main-process module graph into
+// the renderer.
+export interface SettingsShape {
+  hotkey: { combo: string; mode: 'push-to-talk' | 'toggle' };
+  audio: { inputDeviceId: string; sampleRate: 16000 | 24000 | 48000 };
+  transcription: {
+    provider: 'whisper-api' | 'whisper-local';
+    apiKeyRef: string;
+    language: 'auto' | 'th' | 'en';
+    customVocabulary: string[];
+    enablePostProcessing: boolean;
+    postProcessPreset: string;
+  };
+  output: { mode: 'paste' | 'clipboard' | 'both'; restoreClipboard: boolean; pasteDelayMs: number };
+  ui: {
+    overlayPosition: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+    showWaveform: boolean;
+    soundEnabled: boolean;
+    soundVolume: number;
+    theme: 'system' | 'light' | 'dark';
+  };
+  app: { launchOnStartup: boolean; checkForUpdates: boolean; historyLimit: number };
+}
+
+export type SettingsPatch = {
+  [K in keyof SettingsShape]?: Partial<SettingsShape[K]>;
+};
+
+export interface TestConnectionResult {
+  ok: boolean;
+  message: string;
+}
+
 export interface VoiceToTextApi {
   recording: {
     onStart(cb: () => void): Unsubscribe;
@@ -19,6 +53,22 @@ export interface VoiceToTextApi {
   };
   state: {
     onUpdate(cb: (update: StateUpdate) => void): Unsubscribe;
+  };
+  settings: {
+    get(): Promise<SettingsShape>;
+    set(patch: SettingsPatch): Promise<SettingsShape>;
+    reset(): Promise<SettingsShape>;
+    onChange(cb: (s: SettingsShape) => void): Unsubscribe;
+  };
+  secrets: {
+    setApiKey(key: string): Promise<true>;
+    hasApiKey(): Promise<boolean>;
+    deleteApiKey(): Promise<true>;
+    keyMask(): Promise<string>;
+    testApiKey(): Promise<TestConnectionResult>;
+  };
+  windows: {
+    closeSelf(): void;
   };
 }
 
@@ -31,5 +81,21 @@ export const api: VoiceToTextApi = {
   },
   state: {
     onUpdate: (cb) => subscribe<StateUpdate>(IPC.state.update, cb)
+  },
+  settings: {
+    get: () => ipcRenderer.invoke(IPC.settings.get),
+    set: (patch) => ipcRenderer.invoke(IPC.settings.set, patch),
+    reset: () => ipcRenderer.invoke(IPC.settings.reset),
+    onChange: (cb) => subscribe<SettingsShape>(IPC.settings.changed, cb)
+  },
+  secrets: {
+    setApiKey: (key) => ipcRenderer.invoke(IPC.secrets.setApiKey, key),
+    hasApiKey: () => ipcRenderer.invoke(IPC.secrets.hasApiKey),
+    deleteApiKey: () => ipcRenderer.invoke(IPC.secrets.deleteApiKey),
+    keyMask: () => ipcRenderer.invoke(IPC.secrets.keyMask),
+    testApiKey: () => ipcRenderer.invoke(IPC.secrets.testApiKey)
+  },
+  windows: {
+    closeSelf: () => ipcRenderer.send(IPC.windows.closeSelf)
   }
 };

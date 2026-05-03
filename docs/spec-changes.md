@@ -86,6 +86,50 @@ logger". Section 6.1's table doesn't list winston explicitly.
 
 ---
 
+## 2026-05-03 — Sprint 4a — Settings store, keytar, settings window
+
+**What landed:**
+
+- `src/main/store/settings.ts` — `electron-store` v10 backed by zod schema
+  covering every field in spec §8.5. Defaults are baked into the schema so a
+  partial / corrupt JSON file backfills cleanly. Migrations stub in place
+  (currently empty; bump `SCHEMA_VERSION` to add upgrades).
+- `src/main/store/secrets.ts` — `keytar` wrapper, service `9voicetotext`,
+  account `openai-api-key`. Includes `maskKey()` helper.
+- `src/main/transcription/whisper-client.ts` — `ApiKeyGetter` now async; main
+  passes a getter that reads keychain first, `.env.local` second.
+- `src/main/windows/settings.ts` — frameless `hiddenInset` titlebar on Mac,
+  `mica` on Win 11. Shows Dock icon while open, hides again on close.
+- IPC: full settings/secrets surface (`get`/`set`/`reset`/`changed` +
+  `setApiKey`/`hasApiKey`/`deleteApiKey`/`keyMask`/`testApiKey`).
+- Tray: adds **Settings…** + (placeholder) **History…** items.
+- Renderer: design tokens from §11.4 in
+  `src/renderer/shared/tokens.ts`; primitives `Button`, `Input`, `Toggle`,
+  `Select`, `Card`/`Field`, `Toast`/`ToastHost`; `useSettings` zustand bridge
+  with 500 ms auto-save debounce + toast.
+- Renderer: Settings React app with 6-tab sidebar; **General**,
+  **Transcription** (API key + test connection), and **About** are wired;
+  Hotkeys / Audio / Vocabulary show "Coming in Sprint 4b" placeholder.
+
+**Spec deviations:**
+
+- `transcription:testApiKey` IPC hits `GET /v1/models` (cheap, no audio
+  upload) instead of "transcribing 1 s of silence" as the playbook
+  suggested. The 401 vs 200 distinction is enough to validate the key, and
+  it doesn't burn audio quota during dev.
+- API key mask format is `sk-…1234` (3 prefix chars + ellipsis + 4 suffix
+  chars) instead of `*****1234` per the playbook. Easier to confirm a key
+  visually and still privacy-safe.
+
+**Tests:** added `settings-schema` (6 cases) and `secrets` (8 cases). Total
+unit tests now 37, all green.
+
+**Why this scope:** spec §11.2 + playbook 4.1 demand the Settings shell + API
+key UX as Sprint 4's foundation. Other settings pages (Hotkeys, Audio,
+Vocabulary) follow in 4b; History + onboarding in 4c.
+
+---
+
 ## 2026-05-03 — Sprint 3 — Replaced `node-key-sender` with built-in OS commands
 
 **Spec said:** §6.1 lists `node-key-sender ^1.0.11` for cross-platform key
