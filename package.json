@@ -41,7 +41,6 @@
     "electron-store": "^10.0.0",
     "keytar": "^7.9.0",
     "lucide-react": "^0.400.0",
-    "node-key-sender": "^1.0.11",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "uiohook-napi": "^1.5.4",

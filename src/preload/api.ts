@@ -21,6 +21,13 @@ export interface SettingsShape {
     apiKeyRef: string;
     language: 'auto' | 'th' | 'en';
     customVocabulary: string[];
+    vocabularyPresets: {
+      coding: boolean;
+      microsoft365: boolean;
+      brandNames: boolean;
+      thai: boolean;
+    };
+    filterHallucinations: boolean;
     enablePostProcessing: boolean;
     postProcessPreset: string;
   };
@@ -42,6 +49,14 @@ export type SettingsPatch = {
 export interface TestConnectionResult {
   ok: boolean;
   message: string;
+}
+
+export interface HotkeyCheckResult {
+  ok: boolean;
+  /** Normalized accelerator string when ok. */
+  accelerator?: string;
+  /** Reason for failure (parse error, conflict, etc). */
+  message?: string;
 }
 
 export interface VoiceToTextApi {
@@ -66,6 +81,12 @@ export interface VoiceToTextApi {
     deleteApiKey(): Promise<true>;
     keyMask(): Promise<string>;
     testApiKey(): Promise<TestConnectionResult>;
+  };
+  hotkey: {
+    check(combo: string): Promise<HotkeyCheckResult>;
+  };
+  vocabulary: {
+    preview(): Promise<string>;
   };
   windows: {
     closeSelf(): void;
@@ -94,6 +115,12 @@ export const api: VoiceToTextApi = {
     deleteApiKey: () => ipcRenderer.invoke(IPC.secrets.deleteApiKey),
     keyMask: () => ipcRenderer.invoke(IPC.secrets.keyMask),
     testApiKey: () => ipcRenderer.invoke(IPC.secrets.testApiKey)
+  },
+  hotkey: {
+    check: (combo) => ipcRenderer.invoke(IPC.hotkey.check, combo)
+  },
+  vocabulary: {
+    preview: () => ipcRenderer.invoke(IPC.vocabulary.preview)
   },
   windows: {
     closeSelf: () => ipcRenderer.send(IPC.windows.closeSelf)

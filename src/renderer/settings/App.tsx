@@ -4,9 +4,11 @@ import { tokens } from '../shared/tokens';
 import { ToastHost } from '../shared/components/Toast';
 import { useSettings } from '../shared/use-settings';
 import { GeneralPage } from './pages/General';
+import { HotkeysPage } from './pages/Hotkeys';
+import { AudioPage } from './pages/Audio';
 import { TranscriptionPage } from './pages/Transcription';
+import { VocabularyPage } from './pages/Vocabulary';
 import { AboutPage } from './pages/About';
-import { ComingSoonPage } from './pages/ComingSoon';
 
 type TabId = 'general' | 'hotkeys' | 'audio' | 'transcription' | 'vocabulary' | 'about';
 
@@ -18,10 +20,10 @@ interface Tab {
 
 const TABS: Tab[] = [
   { id: 'general', label: 'General', available: true },
-  { id: 'hotkeys', label: 'Hotkeys', available: false },
-  { id: 'audio', label: 'Audio', available: false },
+  { id: 'hotkeys', label: 'Hotkeys', available: true },
+  { id: 'audio', label: 'Audio', available: true },
   { id: 'transcription', label: 'Transcription', available: true },
-  { id: 'vocabulary', label: 'Vocabulary', available: false },
+  { id: 'vocabulary', label: 'Vocabulary', available: true },
   { id: 'about', label: 'About', available: true }
 ];
 
@@ -65,12 +67,16 @@ function PageContent({ tab }: { tab: TabId }): JSX.Element {
   switch (tab) {
     case 'general':
       return <GeneralPage />;
+    case 'hotkeys':
+      return <HotkeysPage />;
+    case 'audio':
+      return <AudioPage />;
     case 'transcription':
       return <TranscriptionPage />;
+    case 'vocabulary':
+      return <VocabularyPage />;
     case 'about':
       return <AboutPage />;
-    default:
-      return <ComingSoonPage tab={tab} />;
   }
 }
 

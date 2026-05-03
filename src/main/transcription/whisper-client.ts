@@ -25,10 +25,24 @@ export interface WhisperClient {
 
 export type ApiKeyGetter = () => string | undefined | Promise<string | undefined | null>;
 
-export function createWhisperClient(getApiKey: ApiKeyGetter): WhisperClient {
+/**
+ * Compose the Whisper `prompt` parameter from current settings each call.
+ * Returning undefined / empty string falls back to {@link CODING_PROMPT}.
+ */
+export type PromptGetter = () => string | undefined;
+
+export interface WhisperClientOptions {
+  getApiKey: ApiKeyGetter;
+  getPrompt?: PromptGetter;
+  getLanguage?: () => 'th' | 'en' | undefined;
+}
+
+export function createWhisperClient(opts: WhisperClientOptions | ApiKeyGetter): WhisperClient {
+  const config: WhisperClientOptions = typeof opts === 'function' ? { getApiKey: opts } : opts;
+
   return {
     async transcribe(req: WhisperRequest): Promise<TranscribeResult> {
-      const apiKey = await getApiKey();
+      const apiKey = await config.getApiKey();
       if (!apiKey) {
         throw new WhisperError('no-api-key', 'OpenAI API key is not configured.');
       }
@@ -39,7 +53,19 @@ export function createWhisperClient(getApiKey: ApiKeyGetter): WhisperClient {
         );
       }
 
-      return withRetry(() => callWhisper(apiKey, req));
+      // Pull dynamic prompt + language each request so Settings changes take
+      // effect without recreating the client.
+      const dynamicPrompt = config.getPrompt?.();
+      const dynamicLanguage = config.getLanguage?.();
+      const mergedOptions: TranscribeOptions = {
+        ...req.options,
+        prompt: req.options?.prompt ?? dynamicPrompt ?? CODING_PROMPT
+      };
+      const finalLanguage = req.options?.language ?? dynamicLanguage;
+      if (finalLanguage) mergedOptions.language = finalLanguage;
+      const reqWithDefaults: WhisperRequest = { ...req, options: mergedOptions };
+
+      return withRetry(() => callWhisper(apiKey, reqWithDefaults));
     }
   };
 }

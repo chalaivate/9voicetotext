@@ -3,6 +3,87 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-05-03 — Sprint 4b — Hotkeys, Audio, Vocabulary + push-to-talk + hallucination filter
+
+**What landed:**
+
+- **Hotkeys page** (`src/renderer/settings/pages/Hotkeys.tsx`): live capture
+  via `HotkeyCapture` component. Press the `Change` button → record any
+  modifier+key combo → IPC `hotkey:check` validates against the OS before
+  saving (test-register / test-unregister dance lives in `HotkeyManager.check`).
+  Mode selector toggles between toggle and push-to-talk.
+- **Push-to-talk via `uiohook-napi`** (`src/main/hotkey/uiohook-bridge.ts`):
+  ships ~prebuilt for darwin-{arm64,x64} + win32-{arm64,x64}, no
+  electron-rebuild needed. `HotkeyManager.register(combo, mode)` starts a
+  global keyup listener when push-to-talk is active. Falls back gracefully if
+  the native binding fails to load (toggle mode keeps working).
+  `RecordingController` grew `pressed()` / `released()` methods; PTT taps
+  shorter than `RECORDING.minDurationMs = 200ms` are discarded as accidental.
+- **Audio page** (`src/renderer/settings/pages/Audio.tsx`): microphone
+  selector (`navigator.mediaDevices.enumerateDevices`), sample rate override
+  (16/24/48 kHz, default 16k), live RMS level meter, and a 3s test-record
+  with playback. `media-recorder.ts` now accepts a `RecorderConfig` so the
+  overlay reads the user's device + sample rate from settings on each session.
+- **Vocabulary page** (`src/renderer/settings/pages/Vocabulary.tsx`):
+  `CODING_PROMPT` was split into 4 toggleable presets in
+  `VOCABULARY_PRESETS` (coding / microsoft365 / brandNames / thai) +
+  `composeWhisperPrompt(presets, custom)` helper. The page exposes preset
+  toggles, a custom-term editor, the hallucination filter switch, and a
+  live preview of the exact string sent to Whisper. New IPC channel
+  `vocabulary:preview` returns the current composed prompt.
+- **Hallucination filter** (`src/main/transcription/post-process.ts`):
+  whole-text regex match against known Whisper boilerplate
+  ("ขอบคุณที่รับชม", "Thanks for watching", "Subscribe และกดกระดิ่งแจ้งเตือน",
+  lone "you", "...") that consistently shows up on silent recordings. When
+  matched, the controller surfaces a friendly "likely silence — try again"
+  error instead of pasting the hallucination. Toggle off via Settings →
+  Vocabulary if you actually want to dictate "Thanks for watching".
+
+**New IPC channels:**
+
+- `hotkey:check` — validate a candidate combo before saving (returns
+  `{ ok: true, accelerator } | { ok: false, message }`).
+- `vocabulary:preview` — returns the composed Whisper prompt string.
+
+**Tests:**
+
+- `post-process.test.ts` — 8 cases covering Thai/English boilerplate +
+  whole-text-only matching invariant
+- `vocabulary-prompt.test.ts` — 6 cases covering preset composition,
+  custom term ordering, empty fallback, token budget
+- Extended `recording-controller.test.ts` with 5 new cases: hallucination
+  filter on/off, push-to-talk press/release lifecycle, short-tap discard,
+  release-while-idle no-op, busy-press debounce
+- Extended `settings-schema.test.ts` for `vocabularyPresets` +
+  `filterHallucinations` defaults and overrides
+
+Total unit tests now ~52, all green.
+
+**Spec deviations:**
+
+- `RECORDING.minDurationMs` (200ms) is new — spec didn't define a min PTT
+  hold time, but in practice press+release events arrive in 50–80ms when
+  the user accidentally taps the hotkey, producing useless empty recordings.
+- The hallucination filter is whole-text-match only; partial-sentence
+  stripping is deliberately deferred to v2 to avoid clipping legitimate
+  sentences that mention the boilerplate phrase (see post-process.ts header).
+
+---
+
+## 2026-05-03 — Dropped `node-key-sender` from dependencies
+
+**Why:** Sprint 3 already replaced this with `osascript` / PowerShell /
+`xdotool` (see "Replaced node-key-sender with built-in OS commands" below).
+Sprint 4b confirmed via 30+ E2E paste sessions across TextEdit, VS Code,
+Word, Chrome, Slack, Google Keep that the OS-built-in path is reliable.
+Removed the dead dep to slim the install surface.
+
+**Cleanup follow-up:** if anyone runs `npm i` against an old lockfile,
+`node-key-sender` will be removed. No code changes needed since
+`src/main/injection/keystroke.ts` only references it in a comment.
+
+---
+
 ## 2026-05-03 — Second rename: 9VoicePrompt → 9VoiceToText
 
 **Spec said:** product called "VoiceFlow" (we already renamed once).

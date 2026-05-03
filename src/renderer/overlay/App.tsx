@@ -5,6 +5,13 @@ import { StatusBadge } from './components/StatusBadge';
 import { Waveform } from './components/Waveform';
 import { errorBeep, startBeep, stopBeep } from './sounds/beeps';
 
+interface AudioConfig {
+  deviceId: string;
+  sampleRate: 16000 | 24000 | 48000;
+  showWaveform: boolean;
+  soundEnabled: boolean;
+}
+
 const labels: Record<AppState, string> = {
   idle: 'Ready',
   recording: 'กำลังบันทึก…',
@@ -31,13 +38,49 @@ export default function App(): JSX.Element {
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const handleRef = useRef<RecordingHandle | null>(null);
   const lastStateRef = useRef<AppState>('idle');
+  const configRef = useRef<AudioConfig>({
+    deviceId: '',
+    sampleRate: 16000,
+    showWaveform: true,
+    soundEnabled: true
+  });
+
+  // Read settings on mount + watch for changes so device/sample rate updates
+  // take effect on the next recording without restarting the app.
+  useEffect(() => {
+    let cancelled = false;
+    void window.voiceToText.settings.get().then((s) => {
+      if (cancelled) return;
+      configRef.current = {
+        deviceId: s.audio.inputDeviceId,
+        sampleRate: s.audio.sampleRate,
+        showWaveform: s.ui.showWaveform,
+        soundEnabled: s.ui.soundEnabled
+      };
+    });
+    const off = window.voiceToText.settings.onChange((s) => {
+      configRef.current = {
+        deviceId: s.audio.inputDeviceId,
+        sampleRate: s.audio.sampleRate,
+        showWaveform: s.ui.showWaveform,
+        soundEnabled: s.ui.soundEnabled
+      };
+    });
+    return () => {
+      cancelled = true;
+      off();
+    };
+  }, []);
 
   // Subscribe to main-process events.
   useEffect(() => {
     const offStart = window.voiceToText.recording.onStart(async () => {
       try {
-        startBeep();
-        const handle = await startRecording();
+        if (configRef.current.soundEnabled) startBeep();
+        const handle = await startRecording({
+          deviceId: configRef.current.deviceId,
+          sampleRate: configRef.current.sampleRate
+        });
         handleRef.current = handle;
         setAnalyser(handle.analyser);
       } catch (err) {
@@ -48,7 +91,7 @@ export default function App(): JSX.Element {
     });
 
     const offStop = window.voiceToText.recording.onStop(async () => {
-      stopBeep();
+      if (configRef.current.soundEnabled) stopBeep();
       const handle = handleRef.current;
       handleRef.current = null;
       setAnalyser(null);
@@ -65,7 +108,11 @@ export default function App(): JSX.Element {
 
     const offState = window.voiceToText.state.onUpdate((update: StateUpdate) => {
       // Play error sound on first transition into error state.
-      if (update.state === 'error' && lastStateRef.current !== 'error') {
+      if (
+        update.state === 'error' &&
+        lastStateRef.current !== 'error' &&
+        configRef.current.soundEnabled
+      ) {
         errorBeep();
       }
       lastStateRef.current = update.state;
@@ -149,7 +196,7 @@ export default function App(): JSX.Element {
           <div style={titleRow}>{stateText}</div>
           {subText && <div style={subtleRow}>{subText}</div>}
         </div>
-        {state === 'recording' && analyser && (
+        {state === 'recording' && analyser && configRef.current.showWaveform && (
           <Waveform analyser={analyser} width={96} height={36} />
         )}
       </div>

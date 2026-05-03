@@ -1,10 +1,11 @@
-import type { AppState, StateUpdate, TranscribeResult } from '@shared/types';
+import type { AppState, HotkeyMode, StateUpdate, TranscribeResult } from '@shared/types';
 import { OVERLAY, RECORDING } from '@shared/constants';
 import { logger } from '@main/utils/logger';
 import { WhisperError } from '@main/transcription/errors';
 import { userFacingMessage } from '@main/transcription/errors';
 import type { WhisperClient } from '@main/transcription/whisper-client';
 import type { TextInjector } from '@main/injection/injector';
+import { filterHallucinations } from '@main/transcription/post-process';
 import { AudioBuffer } from './audio-buffer';
 
 export interface RecordingControllerDeps {
@@ -20,6 +21,10 @@ export interface RecordingControllerDeps {
   requestRendererStop: () => void;
   /** Broadcast the current state to overlay + tray. */
   broadcastState: (update: StateUpdate) => void;
+  /** Read the current hotkey mode (toggle vs push-to-talk). */
+  getHotkeyMode: () => HotkeyMode;
+  /** Read whether to filter Whisper hallucinations. */
+  getFilterHallucinations: () => boolean;
   /** Override timers (for tests). */
   setTimer?: (ms: number, fn: () => void) => () => void;
 }
@@ -46,11 +51,21 @@ export class RecordingController {
   }
 
   /**
-   * Toggle entry point bound to the global hotkey. Starts a new recording when
-   * idle, stops the current recording when recording, and ignores presses while
-   * the pipeline is busy with a previous request.
+   * Hotkey press entry point. In toggle mode this is the only event we hear,
+   * and it cycles start ↔ stop. In push-to-talk mode this fires on key DOWN
+   * to start recording; the matching release lives in `releasePressed()`.
    */
-  togglePressed(): void {
+  pressed(): void {
+    if (this.deps.getHotkeyMode() === 'push-to-talk') {
+      // First press of a recording session — only start when idle/done.
+      if (this.state === 'idle' || this.state === 'success' || this.state === 'error') {
+        this.start();
+      } else {
+        logger.debug('PTT press ignored — pipeline busy', { state: this.state });
+      }
+      return;
+    }
+    // Toggle mode
     if (this.state === 'idle' || this.state === 'success' || this.state === 'error') {
       this.start();
     } else if (this.state === 'recording') {
@@ -58,6 +73,28 @@ export class RecordingController {
     } else {
       logger.debug('hotkey ignored — pipeline busy', { state: this.state });
     }
+  }
+
+  /** Hotkey release entry point — only meaningful in push-to-talk mode. */
+  released(): void {
+    if (this.deps.getHotkeyMode() !== 'push-to-talk') return;
+    if (this.state !== 'recording') return;
+
+    const heldMs = Date.now() - this.recordingStartedAt;
+    if (heldMs < RECORDING.minDurationMs) {
+      logger.info('PTT tap below min duration — discarding', {
+        heldMs,
+        minDurationMs: RECORDING.minDurationMs
+      });
+      this.cancel();
+      return;
+    }
+    this.stop();
+  }
+
+  /** @deprecated kept for tests; equivalent to {@link pressed}. */
+  togglePressed(): void {
+    this.pressed();
   }
 
   /**
@@ -126,10 +163,25 @@ export class RecordingController {
   }
 
   private async handleResult(result: TranscribeResult): Promise<void> {
-    const text = (result.text ?? '').trim();
+    let text = (result.text ?? '').trim();
     if (!text) {
       this.transitionToError('Transcription returned empty text.');
       return;
+    }
+
+    // Hallucination filter — drop common Whisper boilerplate ("ขอบคุณที่รับชม",
+    // "Thanks for watching", lone "you", etc.) before pasting it into the
+    // user's editor. Sprint 4b §FR-2.4.
+    if (this.deps.getFilterHallucinations()) {
+      const filtered = filterHallucinations(text);
+      if (filtered.filtered) {
+        logger.info('hallucination filtered', { original: text, reason: filtered.reason });
+        this.transitionToError(
+          'Likely silence detected (Whisper hallucinated boilerplate). Try recording again.'
+        );
+        return;
+      }
+      text = filtered.text;
     }
 
     // Hide the overlay BEFORE pasting so it doesn't briefly steal focus

@@ -35,6 +35,19 @@ export const SettingsSchema = z
         apiKeyRef: z.string().default(''),
         language: Language.default('auto'),
         customVocabulary: z.array(z.string()).default([]),
+        vocabularyPresets: z
+          .object({
+            coding: z.boolean().default(true),
+            microsoft365: z.boolean().default(false),
+            brandNames: z.boolean().default(true),
+            thai: z.boolean().default(true)
+          })
+          .default({ coding: true, microsoft365: false, brandNames: true, thai: true }),
+        /**
+         * §8.5 / Sprint 4b: filter known Whisper hallucinations
+         * (e.g. "ขอบคุณที่รับชม" on silent recordings) before injection.
+         */
+        filterHallucinations: z.boolean().default(true),
         enablePostProcessing: z.boolean().default(false),
         postProcessPreset: z.string().default('default')
       })
@@ -43,6 +56,8 @@ export const SettingsSchema = z
         apiKeyRef: '',
         language: 'auto',
         customVocabulary: [],
+        vocabularyPresets: { coding: true, microsoft365: false, brandNames: true, thai: true },
+        filterHallucinations: true,
         enablePostProcessing: false,
         postProcessPreset: 'default'
       }),

@@ -1,19 +1,32 @@
-// Spec §8.2 audio configuration. Constraints picked for speech (16 kHz mono).
-const AUDIO_CONSTRAINTS: MediaStreamConstraints = {
-  audio: {
-    channelCount: 1,
-    sampleRate: 16_000,
-    sampleSize: 16,
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true
-  }
-};
+// Spec §8.2 audio configuration. Constraints picked for speech.
+// Sprint 4b: device + sample rate are configurable via Settings.
+
+export interface RecorderConfig {
+  /** Empty string = system default microphone. */
+  deviceId?: string;
+  /** Capture sample rate. 16 kHz works best for Whisper. */
+  sampleRate?: 16000 | 24000 | 48000;
+}
 
 const RECORDER_OPTIONS: MediaRecorderOptions = {
   mimeType: 'audio/webm;codecs=opus',
   audioBitsPerSecond: 32_000
 };
+
+function buildConstraints(cfg: RecorderConfig): MediaStreamConstraints {
+  const audio: MediaTrackConstraints = {
+    channelCount: 1,
+    sampleRate: cfg.sampleRate ?? 16_000,
+    sampleSize: 16,
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true
+  };
+  if (cfg.deviceId) {
+    audio.deviceId = { exact: cfg.deviceId };
+  }
+  return { audio };
+}
 
 export interface RecordingHandle {
   /** Live analyser node — pull frequency/time-domain data for waveform UI. */
@@ -22,8 +35,8 @@ export interface RecordingHandle {
   cancel(): void;
 }
 
-export async function startRecording(): Promise<RecordingHandle> {
-  const stream = await navigator.mediaDevices.getUserMedia(AUDIO_CONSTRAINTS);
+export async function startRecording(cfg: RecorderConfig = {}): Promise<RecordingHandle> {
+  const stream = await navigator.mediaDevices.getUserMedia(buildConstraints(cfg));
 
   // Some browsers/Electron builds reject our preferred mimeType — fall back to defaults.
   const options: MediaRecorderOptions = MediaRecorder.isTypeSupported(

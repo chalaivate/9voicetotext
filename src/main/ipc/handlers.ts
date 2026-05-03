@@ -1,9 +1,10 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { fetch } from 'undici';
 import { IPC } from '@shared/ipc-channels';
-import { TRANSCRIPTION } from '@shared/constants';
+import { TRANSCRIPTION, composeWhisperPrompt } from '@shared/constants';
 import { logger } from '@main/utils/logger';
 import type { RecordingController } from '@main/recording/controller';
+import type { HotkeyManager } from '@main/hotkey/manager';
 import {
   getSettings,
   setSettings,
@@ -17,9 +18,10 @@ import type { SettingsWindow } from '@main/windows/settings';
 interface IpcDeps {
   controller: RecordingController;
   settingsWindow: SettingsWindow;
+  hotkey: HotkeyManager;
 }
 
-export function registerIpcHandlers({ controller, settingsWindow }: IpcDeps): void {
+export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcDeps): void {
   // ---- Recording (existing) ----------------------------------------------
   ipcMain.on(
     IPC.recording.audio,
@@ -105,6 +107,23 @@ export function registerIpcHandlers({ controller, settingsWindow }: IpcDeps): vo
         message: `Network error: ${(err as Error).message || 'unknown'}`
       };
     }
+  });
+
+  // ---- Hotkey: validate a candidate combo without saving -----------------
+  ipcMain.handle(IPC.hotkey.check, async (_event, combo: unknown) => {
+    if (typeof combo !== 'string') {
+      return { ok: false, message: 'Combo must be a string.' };
+    }
+    return hotkey.check(combo);
+  });
+
+  // ---- Vocabulary: compose preview of the prompt sent to Whisper ---------
+  ipcMain.handle(IPC.vocabulary.preview, async () => {
+    const s = getSettings();
+    return composeWhisperPrompt(
+      s.transcription.vocabularyPresets,
+      s.transcription.customVocabulary
+    );
   });
 
   // ---- Window open requests from renderer --------------------------------

@@ -21,6 +21,14 @@ export const IPC = {
     testApiKey: 'secrets:testApiKey',
     keyMask: 'secrets:keyMask'
   },
+  hotkey: {
+    /** Test whether an accelerator string can be registered. */
+    check: 'hotkey:check'
+  },
+  vocabulary: {
+    /** Compose preview of the prompt that will be sent to Whisper. */
+    preview: 'vocabulary:preview'
+  },
   windows: {
     openSettings: 'windows:openSettings',
     openHistory: 'windows:openHistory',

@@ -8,12 +8,31 @@ describe('SettingsSchema', () => {
     expect(parsed.audio.sampleRate).toBe(16_000);
     expect(parsed.transcription.provider).toBe('whisper-api');
     expect(parsed.transcription.language).toBe('auto');
+    expect(parsed.transcription.filterHallucinations).toBe(true);
+    expect(parsed.transcription.vocabularyPresets.coding).toBe(true);
+    expect(parsed.transcription.vocabularyPresets.microsoft365).toBe(false);
+    expect(parsed.transcription.vocabularyPresets.brandNames).toBe(true);
+    expect(parsed.transcription.vocabularyPresets.thai).toBe(true);
     expect(parsed.output.mode).toBe('paste');
     expect(parsed.output.restoreClipboard).toBe(true);
     expect(parsed.ui.overlayPosition).toBe('top-right');
     expect(parsed.ui.soundVolume).toBe(30);
     expect(parsed.app.historyLimit).toBe(50);
     expect(parsed.app.launchOnStartup).toBe(false);
+  });
+
+  it('preserves user-set vocabulary preset toggles', () => {
+    const parsed = SettingsSchema.parse({
+      transcription: {
+        vocabularyPresets: { coding: false, microsoft365: true },
+        filterHallucinations: false
+      }
+    });
+    expect(parsed.transcription.vocabularyPresets.coding).toBe(false);
+    expect(parsed.transcription.vocabularyPresets.microsoft365).toBe(true);
+    // Unspecified preset keys keep their defaults
+    expect(parsed.transcription.vocabularyPresets.thai).toBe(true);
+    expect(parsed.transcription.filterHallucinations).toBe(false);
   });
 
   it('preserves user-set values when parsing partial input', () => {

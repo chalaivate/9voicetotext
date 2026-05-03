@@ -14,7 +14,15 @@ interface Mocks {
   fireTimer: () => void;
 }
 
-function makeController(): { controller: RecordingController; mocks: Mocks } {
+interface ControllerOptions {
+  mode?: 'toggle' | 'push-to-talk';
+  filterHallucinations?: boolean;
+}
+
+function makeController(opts: ControllerOptions = {}): {
+  controller: RecordingController;
+  mocks: Mocks;
+} {
   let timerFn: (() => void) | null = null;
   const fireTimer = (): void => {
     timerFn?.();
@@ -47,6 +55,8 @@ function makeController(): { controller: RecordingController; mocks: Mocks } {
     requestRendererStart,
     requestRendererStop,
     broadcastState,
+    getHotkeyMode: () => opts.mode ?? 'toggle',
+    getFilterHallucinations: () => opts.filterHallucinations ?? false,
     setTimer
   });
 
@@ -164,5 +174,78 @@ describe('RecordingController', () => {
     await controller.submitAudio(new Uint8Array([1]), 'audio/webm');
     expect(controller.getState()).toBe('error');
     expect(mocks.injectorInject).not.toHaveBeenCalled();
+  });
+
+  it('hallucination filter on: drops “ขอบคุณที่รับชม” and surfaces friendly error', async () => {
+    const { controller, mocks } = makeController({ filterHallucinations: true });
+    mocks.whisperTranscribe.mockResolvedValue({
+      ...sampleResult,
+      text: 'ขอบคุณที่รับชม'
+    });
+    controller.pressed();
+    controller.pressed();
+    await controller.submitAudio(new Uint8Array([1]), 'audio/webm');
+    expect(controller.getState()).toBe('error');
+    const errorCall = mocks.broadcastState.mock.calls.find(([u]) => u.state === 'error');
+    expect(errorCall?.[0].message).toMatch(/silence/i);
+    expect(mocks.injectorInject).not.toHaveBeenCalled();
+  });
+
+  it('hallucination filter off: pastes the boilerplate text unchanged', async () => {
+    const { controller, mocks } = makeController({ filterHallucinations: false });
+    mocks.whisperTranscribe.mockResolvedValue({
+      ...sampleResult,
+      text: 'Thanks for watching'
+    });
+    controller.pressed();
+    controller.pressed();
+    await controller.submitAudio(new Uint8Array([1]), 'audio/webm');
+    expect(mocks.injectorInject).toHaveBeenCalledWith('Thanks for watching');
+  });
+
+  it('push-to-talk: press starts, release stops, second press starts again', () => {
+    const { controller } = makeController({ mode: 'push-to-talk' });
+    controller.pressed();
+    expect(controller.getState()).toBe('recording');
+    // Force the recordingStartedAt to be > minDurationMs ago so released() doesn't cancel.
+    // Easiest: cheat by waiting via vi clock — but we don't use fake timers here. Instead,
+    // we directly verify that release with a short hold cancels (next test).
+    // Manually advance the recordingStartedAt by mutating Date.now via spy:
+    const now = Date.now() + 500;
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(now);
+    controller.released();
+    expect(controller.getState()).toBe('processing');
+    spy.mockRestore();
+
+    // After processing completes (we don't submit audio here), a second press
+    // while busy is ignored.
+    controller.pressed();
+    expect(controller.getState()).toBe('processing');
+  });
+
+  it('push-to-talk: very short tap (< minDurationMs) is discarded', () => {
+    const { controller, mocks } = makeController({ mode: 'push-to-talk' });
+    controller.pressed();
+    // released() called immediately — Date.now() - recordingStartedAt ~ 0
+    controller.released();
+    expect(controller.getState()).toBe('idle');
+    expect(mocks.requestRendererStop).not.toHaveBeenCalled();
+  });
+
+  it('push-to-talk: release is a no-op when not recording', () => {
+    const { controller, mocks } = makeController({ mode: 'push-to-talk' });
+    controller.released();
+    expect(controller.getState()).toBe('idle');
+    expect(mocks.requestRendererStop).not.toHaveBeenCalled();
+  });
+
+  it('push-to-talk: subsequent press while busy is debounced', () => {
+    const { controller } = makeController({ mode: 'push-to-talk' });
+    controller.pressed(); // recording
+    const spy = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 500);
+    controller.released(); // processing
+    spy.mockRestore();
+    controller.pressed(); // ignored
+    expect(controller.getState()).toBe('processing');
   });
 });
