@@ -1,4 +1,29 @@
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Diagnostic helper — returns the name of the frontmost macOS app right now.
+ * Used by the injector to log where Cmd+V is about to land. Errors are
+ * swallowed: this is best-effort observability, not a hard requirement.
+ */
+export async function getFrontmostAppName(): Promise<string | null> {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const { stdout } = await execFileAsync(
+      'osascript',
+      [
+        '-e',
+        'tell application "System Events" to get name of first application process whose frontmost is true'
+      ],
+      { timeout: 1500 }
+    );
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Simulate a paste keystroke. Implementation deliberately uses OS-built-in

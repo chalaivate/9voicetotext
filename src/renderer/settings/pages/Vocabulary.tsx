@@ -22,7 +22,7 @@ const PRESET_LABELS: Record<string, { label: string; hint: string }> = {
   },
   thai: {
     label: 'Thai vocabulary',
-    hint: 'ทดสอบ, ฟังก์ชัน, คอมโพเนนต์ + ชาลัยเวท / 9Expert names'
+    hint: 'ทดสอบ, ฟังก์ชัน, คอมโพเนนต์ + ชไลเวท / 9Expert names'
   }
 };
 
@@ -95,7 +95,7 @@ export function VocabularyPage(): JSX.Element {
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="e.g. ชาลัยเวท, Glistening Muffin, 9VoiceToText"
+            placeholder="e.g. ชไลเวท, Glistening Muffin, 9VoiceToText"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();

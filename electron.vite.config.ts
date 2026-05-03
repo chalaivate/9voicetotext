@@ -4,7 +4,9 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // electron-store v10 is ESM-only; bundle it inline so the compiled CJS
+    // main process can require it. All other deps stay external.
+    plugins: [externalizeDepsPlugin({ exclude: ['electron-store'] })],
     resolve: {
       alias: {
         '@shared': resolve(__dirname, 'src/shared'),

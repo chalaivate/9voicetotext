@@ -1,6 +1,11 @@
 import { logger } from '@main/utils/logger';
 import { saveClipboard, restoreClipboard, writeText, type ClipboardSnapshot } from './clipboard';
-import { createPasteRunner, KeystrokeError, type PasteRunner } from './keystroke';
+import {
+  createPasteRunner,
+  getFrontmostAppName,
+  KeystrokeError,
+  type PasteRunner
+} from './keystroke';
 
 export type InjectMode = 'paste' | 'clipboard' | 'both';
 
@@ -76,6 +81,14 @@ export function createTextInjector(deps: InjectorDeps = {}): TextInjector {
 
         // mode = 'paste' or 'both' — fire the keystroke
         await sleep(beforePasteMs);
+
+        // Log the frontmost app so we can see where the paste is landing in
+        // the field. Best-effort; ignored if osascript times out.
+        const frontmost = await getFrontmostAppName();
+        logger.info('paste target', {
+          frontmost: frontmost ?? '(unknown)',
+          textChars: text.length
+        });
 
         let pasteError: string | undefined;
         try {

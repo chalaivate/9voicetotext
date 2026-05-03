@@ -36,7 +36,7 @@ export const TRANSCRIPTION = {
  *
  * Tuned from real Sprint 3 testing: Whisper Thai consistently misheard
  * `ทดสอบ` as `โทรศัพท์`, `ผลลัพธ์` as `ผลลับ`, `Claude Code` as `cross-code`,
- * `Google Keep` as `ฝั่งกูก็คิด`, and the user's name `ชาลัยเวท` as `ชะลายแวท`.
+ * `Google Keep` as `ฝั่งกูก็คิด`, and the user's name `ชไลเวท` as `ชะลายแวท`.
  *
  * Sprint 4b lets users toggle presets and add custom terms via the Settings UI.
  * Total composed prompt should stay under Whisper's 244-token limit.
@@ -48,7 +48,7 @@ export const VOCABULARY_PRESETS = {
     'Microsoft Word, Microsoft Excel, PowerPoint, Power BI, Power Automate, Microsoft 365, Copilot, AI Builder, Outlook.',
   brandNames:
     'Brand names: Claude Code, Cursor, VS Code, GitHub, Anthropic, OpenAI, Whisper, Notion, Slack, Google Keep, Google Docs, ChatGPT.',
-  thai: 'ภาษาไทยศัพท์เทคนิค: ทดสอบ, ผลลัพธ์, ฟังก์ชัน, คอมโพเนนต์, แอปพลิเคชัน, การพัฒนา, ปรบมือ. Names: ชาลัยเวท, อ.เวท, 9Expert, 9Expert Training, 9VoiceToText. Thai-English mixed code-switching expected.'
+  thai: 'ภาษาไทยศัพท์เทคนิค: ทดสอบ, ผลลัพธ์, ฟังก์ชัน, คอมโพเนนต์, แอปพลิเคชัน, การพัฒนา, ปรบมือ. Names: ชไลเวท, อ.เวท, 9Expert, 9Expert Training, 9VoiceToText. Thai-English mixed code-switching expected.'
 } as const;
 
 export type VocabularyPresetKey = keyof typeof VOCABULARY_PRESETS;
