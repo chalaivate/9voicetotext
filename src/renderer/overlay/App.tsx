@@ -38,6 +38,14 @@ export default function App(): JSX.Element {
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const handleRef = useRef<RecordingHandle | null>(null);
   const lastStateRef = useRef<AppState>('idle');
+  /**
+   * Generation token for race-safe start/stop. Bumped on every stop. Each
+   * onStart captures the current value; if startRecording's getUserMedia
+   * resolves AFTER a stop arrived (PTT tap below minDurationMs is the
+   * common case), the token will mismatch and we release the just-opened
+   * stream instead of leaking the mic.
+   */
+  const startTokenRef = useRef<number>(0);
   const configRef = useRef<AudioConfig>({
     deviceId: '',
     sampleRate: 16000,
@@ -75,12 +83,20 @@ export default function App(): JSX.Element {
   // Subscribe to main-process events.
   useEffect(() => {
     const offStart = window.voiceToText.recording.onStart(async () => {
+      const myToken = ++startTokenRef.current;
       try {
         if (configRef.current.soundEnabled) startBeep();
         const handle = await startRecording({
           deviceId: configRef.current.deviceId,
           sampleRate: configRef.current.sampleRate
         });
+        // Race check — if a stop arrived while we were awaiting getUserMedia,
+        // startTokenRef will have been bumped. Release the just-opened stream
+        // instead of stashing it (which would leak the mic indefinitely).
+        if (myToken !== startTokenRef.current) {
+          handle.cancel();
+          return;
+        }
         handleRef.current = handle;
         setAnalyser(handle.analyser);
       } catch (err) {
@@ -91,6 +107,8 @@ export default function App(): JSX.Element {
     });
 
     const offStop = window.voiceToText.recording.onStop(async () => {
+      // Bump token so any in-flight onStart's await knows to bail out.
+      startTokenRef.current++;
       if (configRef.current.soundEnabled) stopBeep();
       const handle = handleRef.current;
       handleRef.current = null;

@@ -88,10 +88,15 @@ async function callWhisper(apiKey: string, req: WhisperRequest): Promise<Transcr
   const filename = req.filename ?? 'audio.webm';
 
   const model = opts.model ?? TRANSCRIPTION.model;
+  // gpt-4o-transcribe / gpt-4o-mini-transcribe only support 'json' or 'text'
+  // response formats — they reject 'verbose_json'. whisper-1 supports all three.
+  // We use 'json' for gpt-4o models (loses language/duration/segments) and
+  // verbose_json for whisper-1 to preserve diagnostic info.
+  const responseFormat = model.startsWith('gpt-4o-') ? 'json' : 'verbose_json';
   const form = new FormData();
   form.append('file', new File([req.audio], filename, { type: mime }));
   form.append('model', model);
-  form.append('response_format', 'verbose_json');
+  form.append('response_format', responseFormat);
   form.append('temperature', String(opts.temperature ?? 0));
   if (opts.language) form.append('language', opts.language);
   form.append('prompt', opts.prompt ?? CODING_PROMPT);

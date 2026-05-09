@@ -44,6 +44,10 @@ export class RecordingController {
   private cancelHideTimer: (() => void) | null = null;
   private cancelMaxDurationTimer: (() => void) | null = null;
   private recordingStartedAt = 0;
+  /** Captured at `stop()` time. Fallback for filter's chars/sec heuristic when
+   * the API response (gpt-4o-transcribe `json` format) doesn't include a
+   * `duration` field. */
+  private lastRecordingDurationMs = 0;
   private readonly setTimer: (ms: number, fn: () => void) => () => void;
 
   constructor(private readonly deps: RecordingControllerDeps) {
@@ -175,6 +179,7 @@ export class RecordingController {
     this.cancelMaxDurationTimer?.();
     this.cancelMaxDurationTimer = null;
     const durationMs = Date.now() - this.recordingStartedAt;
+    this.lastRecordingDurationMs = durationMs;
     this.transition({ state: 'processing', durationMs });
     this.deps.requestRendererStop();
   }
@@ -190,8 +195,15 @@ export class RecordingController {
     // "Thanks for watching", lone "you", etc.) before pasting it into the
     // user's editor. Sprint 4b §FR-2.4.
     if (this.deps.getFilterHallucinations()) {
+      // gpt-4o-transcribe (json format) doesn't return `duration`. Fall back
+      // to our own measured recording duration so the chars/sec heuristic
+      // still works.
+      const audioDurationSec =
+        result.duration && result.duration > 0
+          ? result.duration
+          : this.lastRecordingDurationMs / 1000;
       const filterOpts: { audioDurationSec?: number; whisperPrompt?: string } = {
-        audioDurationSec: result.duration
+        audioDurationSec
       };
       const promptText = this.deps.getWhisperPrompt?.();
       if (promptText) filterOpts.whisperPrompt = promptText;
