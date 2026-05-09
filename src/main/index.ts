@@ -69,7 +69,8 @@ if (ensureSingleInstance()) {
         s.transcription.vocabularyPresets,
         s.transcription.customVocabulary
       );
-    }
+    },
+    getOutputMode: () => getSettings().output.mode
   });
 
   setupLifecycle(() => {

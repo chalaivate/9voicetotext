@@ -72,6 +72,28 @@ export function GeneralPage(): JSX.Element {
         </Field>
       </Card>
 
+      <Card
+        title="Output"
+        description="Some apps (Claude Desktop, VS Code with rich-text editors) block programmatic Cmd+V. Switch to clipboard-only if auto-paste isn't landing in your target app."
+      >
+        <Field
+          label="After recording"
+          hint="Paste at cursor: auto-types into the focused field. Clipboard only: you press Cmd+V manually (works in every app)."
+        >
+          <Select
+            value={settings.output.mode}
+            onValueChange={(v) =>
+              void patch({ output: { mode: v as 'paste' | 'clipboard' | 'both' } })
+            }
+            options={[
+              { value: 'paste', label: 'Paste at cursor (auto)' },
+              { value: 'clipboard', label: 'Clipboard only (manual ⌘V)' },
+              { value: 'both', label: 'Both — keep in clipboard after paste' }
+            ]}
+          />
+        </Field>
+      </Card>
+
       <Card title="App">
         <Field label="Launch at login" hint="Start 9VoiceToText automatically when you sign in.">
           <Toggle

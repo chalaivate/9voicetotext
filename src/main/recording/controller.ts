@@ -4,7 +4,7 @@ import { logger } from '@main/utils/logger';
 import { WhisperError } from '@main/transcription/errors';
 import { userFacingMessage } from '@main/transcription/errors';
 import type { WhisperClient } from '@main/transcription/whisper-client';
-import type { TextInjector } from '@main/injection/injector';
+import type { InjectMode, TextInjector } from '@main/injection/injector';
 import { filterHallucinations } from '@main/transcription/post-process';
 import { AudioBuffer } from './audio-buffer';
 
@@ -27,6 +27,8 @@ export interface RecordingControllerDeps {
   getFilterHallucinations: () => boolean;
   /** Read the current Whisper prompt (for prompt-echo hallucination detection). */
   getWhisperPrompt?: () => string;
+  /** Read the current output mode (paste vs clipboard-only). Defaults to 'paste'. */
+  getOutputMode?: () => InjectMode;
   /** Override timers (for tests). */
   setTimer?: (ms: number, fn: () => void) => () => void;
 }
@@ -209,7 +211,8 @@ export class RecordingController {
     this.transition({ state: 'injecting', text });
     this.deps.hideOverlay();
 
-    const injection = await this.deps.injector.inject(text);
+    const mode = this.deps.getOutputMode?.() ?? 'paste';
+    const injection = await this.deps.injector.inject(text, { mode });
 
     if (!injection.ok) {
       // Paste blocked / failed — show overlay again with the message and

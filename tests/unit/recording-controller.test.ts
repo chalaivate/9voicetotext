@@ -108,7 +108,10 @@ describe('RecordingController', () => {
     await controller.submitAudio(new Uint8Array([0, 1, 2, 3]), 'audio/webm');
 
     expect(mocks.whisperTranscribe).toHaveBeenCalledOnce();
-    expect(mocks.injectorInject).toHaveBeenCalledWith('สวัสดีครับ hello world');
+    expect(mocks.injectorInject).toHaveBeenCalledWith(
+      'สวัสดีครับ hello world',
+      expect.objectContaining({ mode: 'paste' })
+    );
 
     const injectingCall = mocks.broadcastState.mock.calls.find(([u]) => u.state === 'injecting');
     expect(injectingCall?.[0].text).toBe('สวัสดีครับ hello world');
@@ -200,7 +203,10 @@ describe('RecordingController', () => {
     controller.pressed();
     controller.pressed();
     await controller.submitAudio(new Uint8Array([1]), 'audio/webm');
-    expect(mocks.injectorInject).toHaveBeenCalledWith('Thanks for watching');
+    expect(mocks.injectorInject).toHaveBeenCalledWith(
+      'Thanks for watching',
+      expect.objectContaining({ mode: 'paste' })
+    );
   });
 
   it('push-to-talk: press starts, release stops, second press starts again', () => {
