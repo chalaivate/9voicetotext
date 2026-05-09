@@ -44,7 +44,19 @@ export class KeystrokeError extends Error {
   }
 }
 
-const MAC_PASTE_SCRIPT = 'tell application "System Events" to keystroke "v" using command down';
+/**
+ * Use `key code 9` (physical V key) instead of `keystroke "v"` because the
+ * latter sends a *character* — and on a Thai keyboard layout, the V key
+ * produces "อ", so `keystroke "v" using command down` becomes "Cmd+อ"
+ * which macOS does NOT bind to paste. `key code` is layout-independent and
+ * always triggers the OS menu shortcut "Paste".
+ *
+ * Discovered 2026-05-09 in Sprint 4d Phase 2 testing: auto-stop mode
+ * dictating Thai for 10s+ leaves the Thai input source active when paste
+ * fires, breaking paste in any app. Toggle/PTT modes happened to work
+ * because users typically test them with English input source.
+ */
+const MAC_PASTE_SCRIPT = 'tell application "System Events" to key code 9 using command down';
 
 const WIN_PASTE_SCRIPT = [
   'Add-Type -AssemblyName System.Windows.Forms',

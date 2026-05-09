@@ -3,6 +3,36 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-05-09 — macOS paste keystroke now uses key code (Thai-layout fix)
+
+**Spec said:** Section 8.4 specifies "simulate Cmd+V via osascript" without
+detailing the AppleScript form.
+
+**Bug discovered:** Sprint 4d Phase 2 auto-stop testing exposed that
+`tell application "System Events" to keystroke "v" using command down`
+does NOT actually paste when the user's input source is Thai. Reason:
+`keystroke` sends a _character_, and on a Thai (Kedmanee) keyboard the V
+key produces "อ", so macOS sees `Cmd+อ` — not bound to paste — and the
+keystroke either does nothing or triggers the wrong shortcut (e.g. select
+in some text fields).
+
+Toggle/PTT modes happened to work because users typically tested them
+with English input source active. Auto-stop is the first mode where the
+user dictates Thai for 10s+ continuously without ever touching the
+keyboard, so the input source stays Thai through paste time.
+
+**Fix:** switched `MAC_PASTE_SCRIPT` in `src/main/injection/keystroke.ts`
+to `tell application "System Events" to key code 9 using command down`.
+Key code 9 is the physical V key — layout-independent — so `Cmd+V` is
+the menu shortcut macOS recognizes regardless of which input source is
+active.
+
+**Why this is the right fix:** `keystroke` is for typing arbitrary
+characters; `key code` is for triggering specific physical keys + their
+OS-level bindings. Paste is the latter category.
+
+---
+
 ## 2026-05-09 — Sprint 4d Phase 2 — Auto-stop hotkey mode (VAD)
 
 **Spec said:** Section 8.5 settings schema lists `hotkey.mode` as
