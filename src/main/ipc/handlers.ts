@@ -39,6 +39,13 @@ export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcD
     controller.cancel();
   });
 
+  // Sprint 4d Phase 2 — renderer's SilenceDetector hit the silence threshold
+  // for the configured duration. Same outcome as a user-pressed stop, but
+  // routed through a separate channel so we can debounce / log distinctly.
+  ipcMain.on(IPC.recording.autoStop, () => {
+    controller.autoStopFromSilence();
+  });
+
   // ---- Settings ----------------------------------------------------------
   ipcMain.handle(IPC.settings.get, async () => getSettings());
 

@@ -59,17 +59,38 @@ export class RecordingController {
   }
 
   /**
-   * Hotkey press entry point. In toggle mode this is the only event we hear,
-   * and it cycles start ↔ stop. In push-to-talk mode this fires on key DOWN
-   * to start recording; the matching release lives in `releasePressed()`.
+   * Hotkey press entry point.
+   *
+   * - **toggle**: cycles start ↔ stop on each press.
+   * - **push-to-talk**: fires on key DOWN to start recording; the matching
+   *   release lives in {@link released}.
+   * - **auto-stop** (Sprint 4d Phase 2): first press starts recording. The
+   *   renderer's SilenceDetector triggers stop via the `recording:autoStop`
+   *   IPC. A *second* press during recording **cancels** instead of stops —
+   *   user override to abort without sending the audio. We pick cancel over
+   *   stop so the user never accidentally transcribes a noise-induced false
+   *   start; the silence timer is what's meant to send.
    */
   pressed(): void {
-    if (this.deps.getHotkeyMode() === 'push-to-talk') {
+    const mode = this.deps.getHotkeyMode();
+    if (mode === 'push-to-talk') {
       // First press of a recording session — only start when idle/done.
       if (this.state === 'idle' || this.state === 'success' || this.state === 'error') {
         this.start();
       } else {
         logger.debug('PTT press ignored — pipeline busy', { state: this.state });
+      }
+      return;
+    }
+    if (mode === 'auto-stop') {
+      if (this.state === 'idle' || this.state === 'success' || this.state === 'error') {
+        this.start();
+      } else if (this.state === 'recording') {
+        // Second press = cancel (NOT stop). See JSDoc above for rationale.
+        logger.info('auto-stop cancelled by user re-press');
+        this.cancel();
+      } else {
+        logger.debug('auto-stop press ignored — pipeline busy', { state: this.state });
       }
       return;
     }
@@ -103,6 +124,25 @@ export class RecordingController {
   /** @deprecated kept for tests; equivalent to {@link pressed}. */
   togglePressed(): void {
     this.pressed();
+  }
+
+  /**
+   * Sprint 4d Phase 2 — fired by the renderer's SilenceDetector when RMS
+   * drops below threshold for the configured duration. Same path as a
+   * user-initiated stop, but only honored in auto-stop mode + while
+   * recording (defensive: a stale event after cancel/stop is dropped).
+   */
+  autoStopFromSilence(): void {
+    if (this.deps.getHotkeyMode() !== 'auto-stop') {
+      logger.debug('autoStop ignored — not in auto-stop mode');
+      return;
+    }
+    if (this.state !== 'recording') {
+      logger.debug('autoStop ignored — not recording', { state: this.state });
+      return;
+    }
+    logger.info('auto-stop fired by silence detector');
+    this.stop();
   }
 
   /**

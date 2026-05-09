@@ -3,6 +3,41 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-05-09 — Sprint 4d Phase 2 — Auto-stop hotkey mode (VAD)
+
+**Spec said:** Section 8.5 settings schema lists `hotkey.mode` as
+`'push-to-talk' | 'toggle'` only. Audio settings have no silence-detection
+fields.
+
+**What we added:**
+
+- New hotkey mode `'auto-stop'`. Press once → record → silence ≥ N seconds
+  → automatic stop + send. Re-press during recording cancels (no audio
+  sent). Implemented in `RecordingController.autoStopFromSilence()` +
+  `pressed()` mode-aware branch.
+- New schema fields under `audio`:
+  - `silenceThresholdRms` (0–1, default 0.015) — RMS below which the mic
+    is considered silent.
+  - `silenceDurationMs` (1000–30000, default 10000) — how long that
+    silence must persist before auto-stop fires.
+- New IPC channel `recording:autoStop` — renderer → main when the
+  `SilenceDetector` (in `src/renderer/overlay/recorder/silence-detector.ts`)
+  observes silence for the full duration.
+- Settings UI: Hotkeys page exposes the third mode; Audio page gets a
+  "Auto-stop silence detection" card with sliders + a live RMS meter
+  (Calibrate button) so users can pick a threshold above their ambient
+  room noise.
+
+**Why:** user wanted a single-press dictation mode that works without
+holding the hotkey and without remembering to press twice — flows
+naturally into thinking pauses.
+
+**Consequences:** Existing `'toggle'` and `'push-to-talk'` modes continue
+to work unchanged. Schema additions are additive with safe defaults, so
+old settings files migrate without intervention.
+
+---
+
 ## 2026-05-08 — Sprint 4d Phase 1 — Switch transcription model to `gpt-4o-transcribe`
 
 **Spec said:** Section 9.1 names "OpenAI Whisper API (whisper-1)" as the

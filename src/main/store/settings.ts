@@ -7,7 +7,7 @@ import { DEFAULT_HOTKEY } from '@shared/constants';
  * Spec §8.5 Settings schema, validated with zod. We default every field so
  * partial settings files (corrupt or pre-migration) parse cleanly.
  */
-const HotkeyMode = z.enum(['push-to-talk', 'toggle']);
+const HotkeyMode = z.enum(['push-to-talk', 'toggle', 'auto-stop']);
 const SampleRate = z.union([z.literal(16_000), z.literal(24_000), z.literal(48_000)]);
 const Provider = z.enum(['whisper-api', 'whisper-local']);
 const TranscriptionModel = z.enum(['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe']);
@@ -27,9 +27,22 @@ export const SettingsSchema = z
     audio: z
       .object({
         inputDeviceId: z.string().default(''),
-        sampleRate: SampleRate.default(16_000)
+        sampleRate: SampleRate.default(16_000),
+        /**
+         * Sprint 4d Phase 2 — Auto-stop VAD. RMS threshold below which the
+         * mic is considered "silent". Live meter in the Audio settings page
+         * lets the user calibrate against ambient room noise.
+         */
+        silenceThresholdRms: z.number().min(0).max(1).default(0.015),
+        /** Duration of continuous silence (ms) before auto-stop fires. */
+        silenceDurationMs: z.number().int().min(1_000).max(30_000).default(10_000)
       })
-      .default({ inputDeviceId: '', sampleRate: 16_000 }),
+      .default({
+        inputDeviceId: '',
+        sampleRate: 16_000,
+        silenceThresholdRms: 0.015,
+        silenceDurationMs: 10_000
+      }),
     transcription: z
       .object({
         provider: Provider.default('whisper-api'),

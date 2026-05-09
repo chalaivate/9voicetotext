@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import type { AppState, StateUpdate } from '../../shared/types';
+import type { AppState, HotkeyMode, StateUpdate } from '../../shared/types';
 import { startRecording, type RecordingHandle } from './recorder/media-recorder';
+import { SilenceDetector, rmsFromAnalyser } from './recorder/silence-detector';
 import { StatusBadge } from './components/StatusBadge';
 import { Waveform } from './components/Waveform';
 import { errorBeep, startBeep, stopBeep } from './sounds/beeps';
@@ -10,6 +11,10 @@ interface AudioConfig {
   sampleRate: 16000 | 24000 | 48000;
   showWaveform: boolean;
   soundEnabled: boolean;
+  /** Sprint 4d Phase 2 — auto-stop VAD config. Read each recording. */
+  hotkeyMode: HotkeyMode;
+  silenceThresholdRms: number;
+  silenceDurationMs: number;
 }
 
 const labels: Record<AppState, string> = {
@@ -36,7 +41,10 @@ export default function App(): JSX.Element {
   const [message, setMessage] = useState<string>('');
   const [elapsedSec, setElapsedSec] = useState<number>(0);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  /** Sprint 4d Phase 2 — countdown shown while VAD is waiting for silence. */
+  const [silenceRemainingMs, setSilenceRemainingMs] = useState<number | null>(null);
   const handleRef = useRef<RecordingHandle | null>(null);
+  const detectorRef = useRef<SilenceDetector | null>(null);
   const lastStateRef = useRef<AppState>('idle');
   /**
    * Generation token for race-safe start/stop. Bumped on every stop. Each
@@ -50,7 +58,10 @@ export default function App(): JSX.Element {
     deviceId: '',
     sampleRate: 16000,
     showWaveform: true,
-    soundEnabled: true
+    soundEnabled: true,
+    hotkeyMode: 'toggle',
+    silenceThresholdRms: 0.015,
+    silenceDurationMs: 10_000
   });
 
   // Read settings on mount + watch for changes so device/sample rate updates
@@ -63,7 +74,10 @@ export default function App(): JSX.Element {
         deviceId: s.audio.inputDeviceId,
         sampleRate: s.audio.sampleRate,
         showWaveform: s.ui.showWaveform,
-        soundEnabled: s.ui.soundEnabled
+        soundEnabled: s.ui.soundEnabled,
+        hotkeyMode: s.hotkey.mode,
+        silenceThresholdRms: s.audio.silenceThresholdRms,
+        silenceDurationMs: s.audio.silenceDurationMs
       };
     });
     const off = window.voiceToText.settings.onChange((s) => {
@@ -71,7 +85,10 @@ export default function App(): JSX.Element {
         deviceId: s.audio.inputDeviceId,
         sampleRate: s.audio.sampleRate,
         showWaveform: s.ui.showWaveform,
-        soundEnabled: s.ui.soundEnabled
+        soundEnabled: s.ui.soundEnabled,
+        hotkeyMode: s.hotkey.mode,
+        silenceThresholdRms: s.audio.silenceThresholdRms,
+        silenceDurationMs: s.audio.silenceDurationMs
       };
     });
     return () => {
@@ -99,6 +116,32 @@ export default function App(): JSX.Element {
         }
         handleRef.current = handle;
         setAnalyser(handle.analyser);
+
+        // Sprint 4d Phase 2 — Auto-stop VAD. Spin up a SilenceDetector that
+        // polls the same analyser node. When silence persists for the
+        // configured duration we ping main, which runs the same path as a
+        // user-pressed stop. Detector is torn down in onStop/cleanup.
+        if (configRef.current.hotkeyMode === 'auto-stop') {
+          const cfg = configRef.current;
+          const detector = new SilenceDetector({
+            rmsSource: rmsFromAnalyser(handle.analyser),
+            thresholdRms: cfg.silenceThresholdRms,
+            silenceDurationMs: cfg.silenceDurationMs,
+            onSilenceTimeout: () => {
+              setSilenceRemainingMs(null);
+              window.voiceToText.recording.autoStop();
+            },
+            onUpdate: ({ silentForMs, isSilent }) => {
+              if (!isSilent) {
+                setSilenceRemainingMs(null);
+                return;
+              }
+              setSilenceRemainingMs(Math.max(0, cfg.silenceDurationMs - silentForMs));
+            }
+          });
+          detectorRef.current = detector;
+          detector.start();
+        }
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('mic access failed', err);
@@ -110,6 +153,11 @@ export default function App(): JSX.Element {
       // Bump token so any in-flight onStart's await knows to bail out.
       startTokenRef.current++;
       if (configRef.current.soundEnabled) stopBeep();
+      // Tear down the silence detector first so a final tick can't fire
+      // a duplicate autoStop while we're already stopping.
+      detectorRef.current?.dispose();
+      detectorRef.current = null;
+      setSilenceRemainingMs(null);
       const handle = handleRef.current;
       handleRef.current = null;
       setAnalyser(null);
@@ -196,7 +244,21 @@ export default function App(): JSX.Element {
   const stateText =
     state === 'recording' ? `${labels[state]} ${formatTime(elapsedSec)}` : labels[state];
 
-  const subText = state === 'success' ? text : state === 'error' ? message || 'Unknown error' : '';
+  // Sprint 4d Phase 2 — show "auto-stop in Xs" countdown when silence has
+  // been detected, only in auto-stop mode and during recording.
+  const autoStopHint =
+    state === 'recording' &&
+    configRef.current.hotkeyMode === 'auto-stop' &&
+    silenceRemainingMs !== null
+      ? `auto-stop ใน ${Math.ceil(silenceRemainingMs / 1000)}s`
+      : null;
+
+  const subText =
+    state === 'success'
+      ? text
+      : state === 'error'
+        ? message || 'Unknown error'
+        : (autoStopHint ?? '');
 
   return (
     <>

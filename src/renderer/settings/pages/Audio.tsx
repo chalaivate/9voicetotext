@@ -104,7 +104,206 @@ export function AudioPage(): JSX.Element {
           sampleRate={settings.audio.sampleRate}
         />
       </Card>
+
+      <Card
+        title="Auto-stop silence detection"
+        description="Tune how the app decides the room is quiet enough to end recording. Used only when Hotkeys mode = Auto-stop."
+      >
+        <Field
+          label="Silence threshold (RMS)"
+          hint="Lower = more sensitive (stops sooner in moderate noise). Click Calibrate to see your room's level."
+        >
+          <SliderField
+            min={0}
+            max={0.1}
+            step={0.001}
+            value={settings.audio.silenceThresholdRms}
+            format={(v) => v.toFixed(3)}
+            onChange={(v) => void patch({ audio: { silenceThresholdRms: v } })}
+          />
+        </Field>
+        <Field
+          label="Auto-stop delay"
+          hint="How long the room must stay quiet before the app sends the audio."
+        >
+          <SliderField
+            min={1000}
+            max={30000}
+            step={500}
+            value={settings.audio.silenceDurationMs}
+            format={(v) => `${(v / 1000).toFixed(1)} s`}
+            onChange={(v) => void patch({ audio: { silenceDurationMs: v } })}
+          />
+        </Field>
+        <CalibrateMeter
+          deviceId={settings.audio.inputDeviceId}
+          sampleRate={settings.audio.sampleRate}
+          threshold={settings.audio.silenceThresholdRms}
+        />
+      </Card>
     </>
+  );
+}
+
+interface SliderFieldProps {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  format: (v: number) => string;
+  onChange: (v: number) => void;
+}
+
+function SliderField({ min, max, step, value, format, onChange }: SliderFieldProps): JSX.Element {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%' }}>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ flex: 1, accentColor: tokens.color.brandBlue }}
+      />
+      <span
+        style={{
+          fontFamily: tokens.font.mono,
+          fontSize: 12,
+          color: tokens.color.text,
+          minWidth: 56,
+          textAlign: 'right'
+        }}
+      >
+        {format(value)}
+      </span>
+    </div>
+  );
+}
+
+interface CalibrateMeterProps {
+  deviceId: string;
+  sampleRate: 16000 | 24000 | 48000;
+  threshold: number;
+}
+
+/**
+ * Live RMS meter with the current threshold marked. Lets the user pick a
+ * value that's above their ambient noise but below their speaking level.
+ * Mic stream is opened only while active; stopped automatically on unmount.
+ */
+function CalibrateMeter({ deviceId, sampleRate, threshold }: CalibrateMeterProps): JSX.Element {
+  const [active, setActive] = useState(false);
+  const [rms, setRms] = useState(0);
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      cleanupRef.current?.();
+    };
+  }, []);
+
+  async function start(): Promise<void> {
+    try {
+      const audioConstraints: MediaTrackConstraints = {
+        sampleRate,
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      };
+      if (deviceId) audioConstraints.deviceId = { exact: deviceId };
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      const data = new Uint8Array(analyser.fftSize);
+
+      let stopped = false;
+      const tick = (): void => {
+        if (stopped) return;
+        analyser.getByteTimeDomainData(data);
+        let sumSq = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = (data[i]! - 128) / 128;
+          sumSq += v * v;
+        }
+        setRms(Math.sqrt(sumSq / data.length));
+        requestAnimationFrame(tick);
+      };
+      tick();
+
+      cleanupRef.current = () => {
+        stopped = true;
+        stream.getTracks().forEach((t) => t.stop());
+        try {
+          source.disconnect();
+          analyser.disconnect();
+        } catch {
+          // ignore
+        }
+        void audioCtx.close();
+        setRms(0);
+      };
+      setActive(true);
+    } catch (err) {
+      toast(`Mic open failed: ${(err as Error).message}`, 'error', 4000);
+    }
+  }
+
+  function stop(): void {
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    setActive(false);
+  }
+
+  // Scale: clamp 0..0.1 RMS to bar width — matches the slider range so the
+  // marker position is intuitive against the threshold value.
+  const SCALE_MAX = 0.1;
+  const rmsPct = Math.min(100, (rms / SCALE_MAX) * 100);
+  const thresholdPct = Math.min(100, (threshold / SCALE_MAX) * 100);
+  const aboveThreshold = rms >= threshold;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 12 }}>
+      <div style={{ position: 'relative', width: '100%', height: 12 }}>
+        <div style={meterTrack}>
+          <div
+            style={{
+              width: `${active ? rmsPct : 0}%`,
+              height: '100%',
+              background: aboveThreshold ? tokens.color.success : tokens.color.textDim,
+              borderRadius: 4,
+              transition: 'width 60ms linear'
+            }}
+          />
+        </div>
+        {/* Threshold marker */}
+        <div
+          style={{
+            position: 'absolute',
+            left: `${thresholdPct}%`,
+            top: -2,
+            bottom: -2,
+            width: 2,
+            background: tokens.color.warning,
+            transform: 'translateX(-1px)'
+          }}
+          title={`Threshold ${threshold.toFixed(3)}`}
+        />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Button variant="ghost" size="sm" onClick={active ? stop : start}>
+          {active ? 'Stop calibrate' : 'Calibrate (live meter)'}
+        </Button>
+        <span style={{ fontSize: 11, color: tokens.color.textDim, fontFamily: tokens.font.mono }}>
+          {active ? `RMS ${rms.toFixed(3)} ${aboveThreshold ? '· loud' : '· silent'}` : ''}
+        </span>
+      </div>
+    </div>
   );
 }
 

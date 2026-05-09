@@ -14,8 +14,13 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): Unsubscr
 // declaration here avoids dragging the full main-process module graph into
 // the renderer.
 export interface SettingsShape {
-  hotkey: { combo: string; mode: 'push-to-talk' | 'toggle' };
-  audio: { inputDeviceId: string; sampleRate: 16000 | 24000 | 48000 };
+  hotkey: { combo: string; mode: 'push-to-talk' | 'toggle' | 'auto-stop' };
+  audio: {
+    inputDeviceId: string;
+    sampleRate: 16000 | 24000 | 48000;
+    silenceThresholdRms: number;
+    silenceDurationMs: number;
+  };
   transcription: {
     provider: 'whisper-api' | 'whisper-local';
     model: 'whisper-1' | 'gpt-4o-transcribe' | 'gpt-4o-mini-transcribe';
@@ -66,6 +71,12 @@ export interface VoiceToTextApi {
     onStop(cb: () => void): Unsubscribe;
     sendAudio(data: ArrayBuffer, mimeType: string): void;
     cancel(): void;
+    /**
+     * Sprint 4d Phase 2 — Auto-stop mode. Renderer fires this when its
+     * SilenceDetector observes RMS below threshold for the configured
+     * duration. Main runs the same path as a user-pressed stop.
+     */
+    autoStop(): void;
   };
   state: {
     onUpdate(cb: (update: StateUpdate) => void): Unsubscribe;
@@ -99,7 +110,8 @@ export const api: VoiceToTextApi = {
     onStart: (cb) => subscribe<void>(IPC.recording.start, () => cb()),
     onStop: (cb) => subscribe<void>(IPC.recording.stop, () => cb()),
     sendAudio: (data, mimeType) => ipcRenderer.send(IPC.recording.audio, { data, mimeType }),
-    cancel: () => ipcRenderer.send(IPC.recording.cancel)
+    cancel: () => ipcRenderer.send(IPC.recording.cancel),
+    autoStop: () => ipcRenderer.send(IPC.recording.autoStop)
   },
   state: {
     onUpdate: (cb) => subscribe<StateUpdate>(IPC.state.update, cb)

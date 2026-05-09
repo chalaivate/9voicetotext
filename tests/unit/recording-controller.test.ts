@@ -15,7 +15,7 @@ interface Mocks {
 }
 
 interface ControllerOptions {
-  mode?: 'toggle' | 'push-to-talk';
+  mode?: 'toggle' | 'push-to-talk' | 'auto-stop';
   filterHallucinations?: boolean;
 }
 
@@ -268,5 +268,57 @@ describe('RecordingController', () => {
     spy.mockRestore();
     controller.pressed(); // ignored
     expect(controller.getState()).toBe('processing');
+  });
+
+  // ----- Sprint 4d Phase 2 — Auto-stop mode -------------------------------
+
+  it('auto-stop: press starts recording, autoStopFromSilence stops it', () => {
+    const { controller, mocks } = makeController({ mode: 'auto-stop' });
+    controller.pressed();
+    expect(controller.getState()).toBe('recording');
+    expect(mocks.requestRendererStart).toHaveBeenCalledOnce();
+    controller.autoStopFromSilence();
+    expect(controller.getState()).toBe('processing');
+    expect(mocks.requestRendererStop).toHaveBeenCalledOnce();
+  });
+
+  it('auto-stop: re-press during recording cancels (does NOT send audio)', async () => {
+    const { controller, mocks } = makeController({ mode: 'auto-stop' });
+    controller.pressed(); // start recording
+    controller.pressed(); // re-press → cancel
+    expect(controller.getState()).toBe('idle');
+    // Cancel must release the renderer's mic stream.
+    expect(mocks.requestRendererStop).toHaveBeenCalledOnce();
+    expect(mocks.hideOverlay).toHaveBeenCalled();
+    // Audio that arrives after a cancel is silently discarded — no Whisper.
+    await controller.submitAudio(new Uint8Array([1, 2, 3]), 'audio/webm');
+    expect(mocks.whisperTranscribe).not.toHaveBeenCalled();
+  });
+
+  it('auto-stop: autoStopFromSilence is ignored when not in auto-stop mode', () => {
+    const { controller } = makeController({ mode: 'toggle' });
+    controller.pressed(); // recording
+    controller.autoStopFromSilence(); // should be a no-op
+    expect(controller.getState()).toBe('recording');
+  });
+
+  it('auto-stop: autoStopFromSilence is ignored when not currently recording', () => {
+    const { controller } = makeController({ mode: 'auto-stop' });
+    // idle state
+    controller.autoStopFromSilence();
+    expect(controller.getState()).toBe('idle');
+  });
+
+  it('auto-stop: full happy path — press, silence triggers send, success state', async () => {
+    const { controller, mocks } = makeController({ mode: 'auto-stop' });
+    mocks.whisperTranscribe.mockResolvedValue(sampleResult);
+    controller.pressed();
+    controller.autoStopFromSilence();
+    await controller.submitAudio(new Uint8Array([1, 2]), 'audio/webm');
+    expect(mocks.injectorInject).toHaveBeenCalledWith(
+      'สวัสดีครับ hello world',
+      expect.objectContaining({ mode: 'paste' })
+    );
+    expect(controller.getState()).toBe('success');
   });
 });

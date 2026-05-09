@@ -3,7 +3,9 @@ export const IPC = {
     start: 'recording:start',
     stop: 'recording:stop',
     audio: 'recording:audio',
-    cancel: 'recording:cancel'
+    cancel: 'recording:cancel',
+    /** Sprint 4d Phase 2 — renderer-detected silence triggers auto-stop. */
+    autoStop: 'recording:autoStop'
   },
   state: {
     update: 'state:update'

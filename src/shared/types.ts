@@ -1,6 +1,6 @@
 export type AppState = 'idle' | 'recording' | 'processing' | 'injecting' | 'success' | 'error';
 
-export type HotkeyMode = 'push-to-talk' | 'toggle';
+export type HotkeyMode = 'push-to-talk' | 'toggle' | 'auto-stop';
 
 export interface StateUpdate {
   state: AppState;

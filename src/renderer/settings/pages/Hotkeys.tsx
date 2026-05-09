@@ -39,14 +39,17 @@ export function HotkeysPage(): JSX.Element {
         </Field>
         <Field
           label="Mode"
-          hint="Toggle = press to start / press again to stop. Push-to-talk = hold to record, release to send."
+          hint="Toggle = press to start / press again to stop. Push-to-talk = hold to record, release to send. Auto-stop = press once, app stops automatically after silence."
         >
           <Select
             value={settings.hotkey.mode}
-            onValueChange={(v) => void patch({ hotkey: { mode: v as 'toggle' | 'push-to-talk' } })}
+            onValueChange={(v) =>
+              void patch({ hotkey: { mode: v as 'toggle' | 'push-to-talk' | 'auto-stop' } })
+            }
             options={[
               { value: 'toggle', label: 'Toggle' },
-              { value: 'push-to-talk', label: 'Push-to-talk' }
+              { value: 'push-to-talk', label: 'Push-to-talk' },
+              { value: 'auto-stop', label: 'Auto-stop on silence' }
             ]}
           />
         </Field>
@@ -72,6 +75,26 @@ export function HotkeysPage(): JSX.Element {
             If push-to-talk doesn&apos;t respond, open{' '}
             <em>System Settings → Privacy &amp; Security → Accessibility</em> and add 9VoiceToText
             (or your terminal during dev). Toggle mode works without this permission.
+          </p>
+        </Card>
+      )}
+
+      {settings.hotkey.mode === 'auto-stop' && (
+        <Card title="Auto-stop on silence">
+          <p
+            style={{
+              fontSize: 12,
+              color: tokens.color.textDim,
+              margin: 0,
+              lineHeight: 1.6
+            }}
+          >
+            Press your hotkey once to start. Recording stops automatically after{' '}
+            <strong style={{ color: tokens.color.text }}>
+              {(settings.audio.silenceDurationMs / 1000).toFixed(0)} seconds
+            </strong>{' '}
+            of silence. Press the hotkey again during recording to <em>cancel</em> without sending.
+            Tune the silence threshold + duration on the <strong>Audio</strong> page.
           </p>
         </Card>
       )}

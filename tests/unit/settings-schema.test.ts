@@ -6,6 +6,8 @@ describe('SettingsSchema', () => {
     const parsed = SettingsSchema.parse({});
     expect(parsed.hotkey.mode).toBe('toggle');
     expect(parsed.audio.sampleRate).toBe(16_000);
+    expect(parsed.audio.silenceThresholdRms).toBe(0.015);
+    expect(parsed.audio.silenceDurationMs).toBe(10_000);
     expect(parsed.transcription.provider).toBe('whisper-api');
     expect(parsed.transcription.model).toBe('gpt-4o-transcribe');
     expect(parsed.transcription.language).toBe('auto');
@@ -85,5 +87,22 @@ describe('SettingsSchema', () => {
       transcription: { provider: 'azure' }
     });
     expect(badProvider.success).toBe(false);
+  });
+
+  it("accepts 'auto-stop' as a valid hotkey mode", () => {
+    const parsed = SettingsSchema.parse({ hotkey: { mode: 'auto-stop' } });
+    expect(parsed.hotkey.mode).toBe('auto-stop');
+  });
+
+  it('rejects unknown hotkey modes', () => {
+    const result = SettingsSchema.safeParse({ hotkey: { mode: 'voice-activated' } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects out-of-range silence detection values', () => {
+    expect(SettingsSchema.safeParse({ audio: { silenceThresholdRms: 2 } }).success).toBe(false);
+    expect(SettingsSchema.safeParse({ audio: { silenceThresholdRms: -0.1 } }).success).toBe(false);
+    expect(SettingsSchema.safeParse({ audio: { silenceDurationMs: 500 } }).success).toBe(false);
+    expect(SettingsSchema.safeParse({ audio: { silenceDurationMs: 60_000 } }).success).toBe(false);
   });
 });
