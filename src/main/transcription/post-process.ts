@@ -61,7 +61,19 @@ const HALLUCINATIONS: HallucinationPattern[] = [
   // Whisper's "single word hallucination on silence" patterns
   { pattern: /^you[!.\s]*$/i, label: 'en-single-you' },
   { pattern: /^\.{1,3}$/i, label: 'just-dots' },
-  { pattern: /^\s*$/i, label: 'whitespace-only' }
+  { pattern: /^\s*$/i, label: 'whitespace-only' },
+
+  // Office/MIME file format strings — Whisper learned these from training
+  // data and echoes them when audio is silent. Real production case
+  // (2026-05-08): "Microsoft Word 97-2003 Document MSWordDoc Word.Document.8"
+  // appeared 3x in a row from silent recordings.
+  {
+    pattern: /^Microsoft\s+Word\s+97[-–]2003\s+Document.*$/i,
+    label: 'office-mime-string'
+  },
+  { pattern: /^MSWordDoc\b.*$/i, label: 'office-mswordoc' },
+  { pattern: /^Word\.Document\.\d+\s*$/i, label: 'office-worddocument' },
+  { pattern: /^.{0,40}Word\.Document\.\d+\s*$/i, label: 'office-worddocument-suffix' }
 ];
 
 export interface FilterResult {
@@ -174,6 +186,31 @@ export function filterHallucinations(input: string, opts: FilterOptions = {}): F
     const needle = normalizeForCompare(trimmed);
     if (needle.length >= 15 && haystack.includes(needle)) {
       return { text: '', filtered: true, reason: 'prompt-echo' };
+    }
+  }
+
+  // 5) Token-level prompt-echo — Whisper rearranges/repeats prompt fragments
+  // (e.g. "ภาษาไทยศัพท์เทคนิค ภาษาไทยศัพท์ ภาษาไทยศัพท์"). Verbatim substring
+  // check (4) misses these because the order/repetition differs. We tokenize
+  // both output and prompt, then flag if every output token is a substring of
+  // the prompt. Requires ≥ 2 tokens AND total length ≥ 15 chars to avoid
+  // tripping on legitimate single-word utterances.
+  if (opts.whisperPrompt && trimmed.length >= 15) {
+    const outTokens = trimmed
+      .split(/[\s,.;:!?()[\]{}]+/u)
+      .map((t) => t.trim())
+      .filter((t) => t.length >= 3); // ignore "1", "2", "I", etc
+    if (outTokens.length >= 2) {
+      const promptLower = opts.whisperPrompt.toLowerCase();
+      const matched = outTokens.filter((t) => promptLower.includes(t.toLowerCase())).length;
+      const ratio = matched / outTokens.length;
+      if (ratio >= 0.8) {
+        return {
+          text: '',
+          filtered: true,
+          reason: `prompt-echo-tokens:${matched}/${outTokens.length}`
+        };
+      }
     }
   }
 

@@ -124,4 +124,43 @@ describe('filterHallucinations', () => {
     expect(r.filtered).toBe(true);
     expect(r.reason).toBe('prompt-echo');
   });
+
+  it('flags token-level prompt-echo: rearranged/truncated prompt fragments', () => {
+    // Real production case: Whisper outputs prompt-words in jumbled order
+    const prompt =
+      'Brand names: Claude Code, Cursor, GitHub. ภาษาไทยศัพท์เทคนิค: ทดสอบ, ฟังก์ชัน, คอมโพเนนต์.';
+    // 2 tokens, both are prefixes of words appearing in prompt — verbatim
+    // substring check fails because output isn't found contiguously in prompt
+    const r = filterHallucinations('ภาษาไทยศัพท์เทคนิค ภาษาไทยศัพท์', { whisperPrompt: prompt });
+    expect(r.filtered).toBe(true);
+    expect(r.reason).toMatch(/prompt-echo-tokens/);
+  });
+
+  it('flags token-level prompt-echo with 3 tokens of mostly-prompt content', () => {
+    const prompt = 'Brand names: Claude Code, Cursor, GitHub. ภาษาไทยศัพท์เทคนิค: ทดสอบ, ฟังก์ชัน.';
+    const r = filterHallucinations('ภาษาไทยศัพท์เทคนิค ภาษาไทยศัพท์ ภาษาไทยศัพท์', {
+      whisperPrompt: prompt
+    });
+    expect(r.filtered).toBe(true);
+    expect(r.reason).toMatch(/prompt-echo/);
+  });
+
+  it('flags Office file format hallucinations (Whisper training data echo)', () => {
+    // Real production case 2026-05-08: appeared 3x in a row from silent audio
+    expect(
+      filterHallucinations('Microsoft Word 97-2003 Document MSWordDoc Word.Document.8').filtered
+    ).toBe(true);
+    expect(filterHallucinations('Microsoft Word 97-2003 Document').filtered).toBe(true);
+    expect(filterHallucinations('Word.Document.8').filtered).toBe(true);
+    expect(filterHallucinations('MSWordDoc').filtered).toBe(true);
+  });
+
+  it('does NOT flag English sentence with a few prompt-words mixed in', () => {
+    const prompt = 'Technical terms: TypeScript, React, Electron, function, component.';
+    // 7 tokens (≥3 chars): writing, React, component, using, TypeScript, today
+    // 3 in prompt (React, component, TypeScript) → 50% < 80% threshold
+    const utterance = 'I am writing a React component using TypeScript today';
+    const r = filterHallucinations(utterance, { whisperPrompt: prompt });
+    expect(r.filtered).toBe(false);
+  });
 });
