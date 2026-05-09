@@ -1,5 +1,11 @@
 import { fetch, FormData, File } from 'undici';
-import { CODING_PROMPT, RECORDING, TRANSCRIPTION } from '@shared/constants';
+import {
+  CODING_PROMPT,
+  DEFAULT_TRANSCRIPTION_MODEL,
+  RECORDING,
+  TRANSCRIPTION,
+  type TranscriptionModelId
+} from '@shared/constants';
 import type { TranscribeResult } from '@shared/types';
 import { logger } from '@main/utils/logger';
 import { classifyHttp, WhisperError } from './errors';
@@ -9,6 +15,8 @@ export interface TranscribeOptions {
   language?: 'th' | 'en';
   prompt?: string;
   temperature?: number;
+  /** OpenAI transcription model id. Falls back to settings/default. */
+  model?: TranscriptionModelId;
   signal?: AbortSignal;
 }
 
@@ -35,6 +43,8 @@ export interface WhisperClientOptions {
   getApiKey: ApiKeyGetter;
   getPrompt?: PromptGetter;
   getLanguage?: () => 'th' | 'en' | undefined;
+  /** Read the active transcription model id from settings. */
+  getModel?: () => TranscriptionModelId | undefined;
 }
 
 export function createWhisperClient(opts: WhisperClientOptions | ApiKeyGetter): WhisperClient {
@@ -53,13 +63,15 @@ export function createWhisperClient(opts: WhisperClientOptions | ApiKeyGetter): 
         );
       }
 
-      // Pull dynamic prompt + language each request so Settings changes take
-      // effect without recreating the client.
+      // Pull dynamic prompt + language + model each request so Settings
+      // changes take effect without recreating the client.
       const dynamicPrompt = config.getPrompt?.();
       const dynamicLanguage = config.getLanguage?.();
+      const dynamicModel = config.getModel?.();
       const mergedOptions: TranscribeOptions = {
         ...req.options,
-        prompt: req.options?.prompt ?? dynamicPrompt ?? CODING_PROMPT
+        prompt: req.options?.prompt ?? dynamicPrompt ?? CODING_PROMPT,
+        model: req.options?.model ?? dynamicModel ?? DEFAULT_TRANSCRIPTION_MODEL
       };
       const finalLanguage = req.options?.language ?? dynamicLanguage;
       if (finalLanguage) mergedOptions.language = finalLanguage;
@@ -75,9 +87,10 @@ async function callWhisper(apiKey: string, req: WhisperRequest): Promise<Transcr
   const mime = req.mimeType ?? 'audio/webm';
   const filename = req.filename ?? 'audio.webm';
 
+  const model = opts.model ?? TRANSCRIPTION.model;
   const form = new FormData();
   form.append('file', new File([req.audio], filename, { type: mime }));
-  form.append('model', TRANSCRIPTION.model);
+  form.append('model', model);
   form.append('response_format', 'verbose_json');
   form.append('temperature', String(opts.temperature ?? 0));
   if (opts.language) form.append('language', opts.language);
@@ -110,6 +123,7 @@ async function callWhisper(apiKey: string, req: WhisperRequest): Promise<Transcr
     const json = (await res.json()) as TranscribeResult;
     const elapsedMs = Date.now() - startedAt;
     logger.info('whisper success', {
+      model,
       elapsedMs,
       duration: json.duration,
       language: json.language,

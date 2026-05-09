@@ -7,6 +7,7 @@ describe('SettingsSchema', () => {
     expect(parsed.hotkey.mode).toBe('toggle');
     expect(parsed.audio.sampleRate).toBe(16_000);
     expect(parsed.transcription.provider).toBe('whisper-api');
+    expect(parsed.transcription.model).toBe('gpt-4o-transcribe');
     expect(parsed.transcription.language).toBe('auto');
     expect(parsed.transcription.filterHallucinations).toBe(true);
     expect(parsed.transcription.vocabularyPresets.coding).toBe(true);
@@ -19,6 +20,20 @@ describe('SettingsSchema', () => {
     expect(parsed.ui.soundVolume).toBe(30);
     expect(parsed.app.historyLimit).toBe(50);
     expect(parsed.app.launchOnStartup).toBe(false);
+  });
+
+  it('accepts all 3 supported transcription models', () => {
+    for (const model of ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe']) {
+      const parsed = SettingsSchema.parse({ transcription: { model } });
+      expect(parsed.transcription.model).toBe(model);
+    }
+  });
+
+  it('rejects unknown transcription models', () => {
+    const result = SettingsSchema.safeParse({
+      transcription: { model: 'gpt-5-transcribe' }
+    });
+    expect(result.success).toBe(false);
   });
 
   it('preserves user-set vocabulary preset toggles', () => {

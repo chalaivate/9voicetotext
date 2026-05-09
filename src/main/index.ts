@@ -46,7 +46,8 @@ if (ensureSingleInstance()) {
     getLanguage: () => {
       const lang = getSettings().transcription.language;
       return lang === 'auto' ? undefined : lang;
-    }
+    },
+    getModel: () => getSettings().transcription.model
   });
   const injector = createTextInjector();
 

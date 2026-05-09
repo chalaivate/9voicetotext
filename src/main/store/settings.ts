@@ -10,6 +10,7 @@ import { DEFAULT_HOTKEY } from '@shared/constants';
 const HotkeyMode = z.enum(['push-to-talk', 'toggle']);
 const SampleRate = z.union([z.literal(16_000), z.literal(24_000), z.literal(48_000)]);
 const Provider = z.enum(['whisper-api', 'whisper-local']);
+const TranscriptionModel = z.enum(['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe']);
 const Language = z.enum(['auto', 'th', 'en']);
 const OutputMode = z.enum(['paste', 'clipboard', 'both']);
 const OverlayPosition = z.enum(['top-right', 'top-left', 'bottom-right', 'bottom-left']);
@@ -32,6 +33,12 @@ export const SettingsSchema = z
     transcription: z
       .object({
         provider: Provider.default('whisper-api'),
+        /**
+         * Sprint 4d Phase 1: choose between OpenAI transcription endpoints.
+         * Default `gpt-4o-transcribe` — same price as `whisper-1` but
+         * hallucinates significantly less based on production observations.
+         */
+        model: TranscriptionModel.default('gpt-4o-transcribe'),
         apiKeyRef: z.string().default(''),
         language: Language.default('auto'),
         customVocabulary: z.array(z.string()).default([]),
@@ -53,6 +60,7 @@ export const SettingsSchema = z
       })
       .default({
         provider: 'whisper-api',
+        model: 'gpt-4o-transcribe',
         apiKeyRef: '',
         language: 'auto',
         customVocabulary: [],

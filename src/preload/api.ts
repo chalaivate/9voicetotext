@@ -18,6 +18,7 @@ export interface SettingsShape {
   audio: { inputDeviceId: string; sampleRate: 16000 | 24000 | 48000 };
   transcription: {
     provider: 'whisper-api' | 'whisper-local';
+    model: 'whisper-1' | 'gpt-4o-transcribe' | 'gpt-4o-mini-transcribe';
     apiKeyRef: string;
     language: 'auto' | 'th' | 'en';
     customVocabulary: string[];

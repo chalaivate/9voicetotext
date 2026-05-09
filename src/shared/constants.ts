@@ -25,10 +25,56 @@ export const RECORDING = {
 
 export const TRANSCRIPTION = {
   apiUrl: 'https://api.openai.com/v1/audio/transcriptions',
+  /** @deprecated use TRANSCRIPTION_MODELS + settings.transcription.model. Kept for tests. */
   model: 'whisper-1',
   timeoutMs: 30_000,
   retryDelayMs: 2_000
 } as const;
+
+/**
+ * OpenAI transcription endpoints we support. Sprint 4d Phase 1 (2026-05-08).
+ * All return JSON-compatible response with text/language/duration/segments.
+ *
+ * Pricing reference (May 2026, may change — check OpenAI pricing page):
+ *   - whisper-1               : $0.006/min, no streaming, baseline quality
+ *   - gpt-4o-transcribe       : $0.006/min, streaming, BEST quality
+ *   - gpt-4o-mini-transcribe  : $0.003/min, streaming, near-whisper quality
+ */
+export type TranscriptionModelId = 'whisper-1' | 'gpt-4o-transcribe' | 'gpt-4o-mini-transcribe';
+
+export interface TranscriptionModelInfo {
+  id: TranscriptionModelId;
+  label: string;
+  pricePerMinUsd: number;
+  supportsStreaming: boolean;
+  description: string;
+}
+
+export const TRANSCRIPTION_MODELS: Record<TranscriptionModelId, TranscriptionModelInfo> = {
+  'whisper-1': {
+    id: 'whisper-1',
+    label: 'Whisper-1 (legacy)',
+    pricePerMinUsd: 0.006,
+    supportsStreaming: false,
+    description: 'OpenAI original speech model. Stable but hallucinates more on silent audio.'
+  },
+  'gpt-4o-transcribe': {
+    id: 'gpt-4o-transcribe',
+    label: 'GPT-4o Transcribe (recommended)',
+    pricePerMinUsd: 0.006,
+    supportsStreaming: true,
+    description: 'Best quality, fewer hallucinations than whisper-1, same price. Streaming-capable.'
+  },
+  'gpt-4o-mini-transcribe': {
+    id: 'gpt-4o-mini-transcribe',
+    label: 'GPT-4o Mini Transcribe (cheapest)',
+    pricePerMinUsd: 0.003,
+    supportsStreaming: true,
+    description: 'Half the cost. Quality close to whisper-1. Streaming-capable.'
+  }
+};
+
+export const DEFAULT_TRANSCRIPTION_MODEL: TranscriptionModelId = 'gpt-4o-transcribe';
 
 /**
  * Vocabulary presets — each chunk feeds the Whisper `prompt` parameter to

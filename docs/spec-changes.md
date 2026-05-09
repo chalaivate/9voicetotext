@@ -3,6 +3,48 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-05-08 — Sprint 4d Phase 1 — Switch transcription model to `gpt-4o-transcribe`
+
+**Spec said:** Section 9.1 names "OpenAI Whisper API (whisper-1)" as the
+sole transcription endpoint. `TRANSCRIPTION.model = 'whisper-1'` was
+hard-coded in `src/shared/constants.ts`.
+
+**What we did:** added `transcription.model` enum to settings schema with
+3 valid options, default `gpt-4o-transcribe`. Whisper client reads model
+from settings dynamically each request. Settings → Transcription page
+exposes a dropdown to switch.
+
+| Model                             | Price      | Streaming | Quality        |
+| --------------------------------- | ---------- | --------- | -------------- |
+| `whisper-1` (legacy)              | $0.006/min | ❌        | Baseline       |
+| **`gpt-4o-transcribe`** (default) | $0.006/min | ✅        | Best           |
+| `gpt-4o-mini-transcribe`          | $0.003/min | ✅        | Near whisper-1 |
+
+**Why:** production observation (2026-05-08) showed `whisper-1` hallucinates
+prompt fragments very frequently when audio is short or quiet — outputs like
+"ภาษาไทยศัพท์เทคนิค ภาษาไทยศัพท์เทคนิค ..." and Office MIME strings
+("Microsoft Word 97-2003 Document MSWordDoc Word.Document.8") instead of
+the actual speech. Sprint 4b's filter catches these but a better model
+prevents them upstream.
+
+`gpt-4o-transcribe` (released March 2025) is documented to hallucinate
+significantly less, costs the same, and adds streaming support — a
+prerequisite for Sprint 4d Phase 3 (incremental UI display).
+
+**Compatibility:** all 3 endpoints accept the same FormData params
+(`file`, `model`, `language`, `prompt`, `temperature`, `response_format`).
+Response schema is the same JSON shape (`text`, `language`, `duration`,
+`segments`). No code paths needed restructuring beyond the model parameter.
+
+**Tests:** added 2 schema test cases (accepts all 3 enum values; rejects
+unknown values). Whisper retry tests still pass with the new dynamic model
+parameter.
+
+**Migrations:** none required — the new field has a default, existing
+settings.json files (without `model`) backfill cleanly.
+
+---
+
 ## 2026-05-03 — Sprint 4b — Hotkeys, Audio, Vocabulary + push-to-talk + hallucination filter
 
 **What landed:**
