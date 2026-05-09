@@ -229,7 +229,22 @@ describe('RecordingController', () => {
     // released() called immediately — Date.now() - recordingStartedAt ~ 0
     controller.released();
     expect(controller.getState()).toBe('idle');
-    expect(mocks.requestRendererStop).not.toHaveBeenCalled();
+    // Even on cancel we MUST stop the renderer's MediaRecorder so the mic
+    // stream is released and the macOS mic indicator turns off.
+    expect(mocks.requestRendererStop).toHaveBeenCalledOnce();
+    // No transcription pipeline runs
+    expect(mocks.broadcastState).not.toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'processing' })
+    );
+  });
+
+  it('post-cancel audio submission is discarded silently', async () => {
+    const { controller, mocks } = makeController({ mode: 'push-to-talk' });
+    controller.pressed();
+    controller.released(); // tap → cancel → idle, but renderer might still flush
+    await controller.submitAudio(new Uint8Array([1, 2, 3]), 'audio/webm');
+    expect(mocks.whisperTranscribe).not.toHaveBeenCalled();
+    expect(controller.getState()).toBe('idle');
   });
 
   it('push-to-talk: release is a no-op when not recording', () => {

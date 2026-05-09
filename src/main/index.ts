@@ -62,7 +62,14 @@ if (ensureSingleInstance()) {
       tray.setState(update.state === 'success' || update.state === 'error' ? 'idle' : update.state);
     },
     getHotkeyMode: () => getSettings().hotkey.mode,
-    getFilterHallucinations: () => getSettings().transcription.filterHallucinations
+    getFilterHallucinations: () => getSettings().transcription.filterHallucinations,
+    getWhisperPrompt: () => {
+      const s = getSettings();
+      return composeWhisperPrompt(
+        s.transcription.vocabularyPresets,
+        s.transcription.customVocabulary
+      );
+    }
   });
 
   setupLifecycle(() => {

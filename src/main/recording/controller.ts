@@ -25,6 +25,8 @@ export interface RecordingControllerDeps {
   getHotkeyMode: () => HotkeyMode;
   /** Read whether to filter Whisper hallucinations. */
   getFilterHallucinations: () => boolean;
+  /** Read the current Whisper prompt (for prompt-echo hallucination detection). */
+  getWhisperPrompt?: () => string;
   /** Override timers (for tests). */
   setTimer?: (ms: number, fn: () => void) => () => void;
 }
@@ -102,6 +104,12 @@ export class RecordingController {
    * through Whisper.
    */
   async submitAudio(data: Uint8Array, mimeType: string): Promise<void> {
+    if (this.state === 'idle') {
+      // The renderer flushed audio after a cancel (e.g. PTT tap below
+      // minDurationMs). Discard — there's nothing to transcribe.
+      logger.debug('audio submitted post-cancel, discarding', { bytes: data.byteLength });
+      return;
+    }
     if (this.state !== 'processing') {
       logger.warn('audio submitted while not processing', { state: this.state });
     }
@@ -132,9 +140,16 @@ export class RecordingController {
   }
 
   cancel(): void {
+    const wasRecording = this.state === 'recording';
     logger.info('recording cancelled', { state: this.state });
     this.clearTimers();
     this.buffer.clear();
+    // Tell the renderer to stop its MediaRecorder + release the mic stream
+    // so the OS mic indicator turns off. Without this the stream leaks and
+    // the orange dot in the macOS menu bar stays on indefinitely.
+    if (wasRecording) {
+      this.deps.requestRendererStop();
+    }
     this.transition({ state: 'idle' });
     this.deps.hideOverlay();
   }
@@ -173,7 +188,12 @@ export class RecordingController {
     // "Thanks for watching", lone "you", etc.) before pasting it into the
     // user's editor. Sprint 4b §FR-2.4.
     if (this.deps.getFilterHallucinations()) {
-      const filtered = filterHallucinations(text);
+      const filterOpts: { audioDurationSec?: number; whisperPrompt?: string } = {
+        audioDurationSec: result.duration
+      };
+      const promptText = this.deps.getWhisperPrompt?.();
+      if (promptText) filterOpts.whisperPrompt = promptText;
+      const filtered = filterHallucinations(text, filterOpts);
       if (filtered.filtered) {
         logger.info('hallucination filtered', { original: text, reason: filtered.reason });
         this.transitionToError(
