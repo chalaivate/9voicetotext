@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { AppState, HotkeyMode, StateUpdate } from '../../shared/types';
 import { startRecording, type RecordingHandle } from './recorder/media-recorder';
+import { startChunkedRecording, type ChunkedRecorderHandle } from './recorder/chunked-recorder';
 import { SilenceDetector, rmsFromAnalyser } from './recorder/silence-detector';
 import { StatusBadge } from './components/StatusBadge';
 import { Waveform } from './components/Waveform';
@@ -15,6 +16,9 @@ interface AudioConfig {
   hotkeyMode: HotkeyMode;
   silenceThresholdRms: number;
   silenceDurationMs: number;
+  /** Sprint 4d Phase 4 — chunked streaming. */
+  streaming: boolean;
+  streamingChunkMs: number;
 }
 
 const labels: Record<AppState, string> = {
@@ -43,7 +47,11 @@ export default function App(): JSX.Element {
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   /** Sprint 4d Phase 2 — countdown shown while VAD is waiting for silence. */
   const [silenceRemainingMs, setSilenceRemainingMs] = useState<number | null>(null);
+  /** Sprint 4d Phase 4 — running text from streaming mode, shown live during recording. */
+  const [interimText, setInterimText] = useState<string>('');
   const handleRef = useRef<RecordingHandle | null>(null);
+  /** Sprint 4d Phase 4 — chunked recorder used when settings.transcription.streaming === true. */
+  const chunkedRef = useRef<ChunkedRecorderHandle | null>(null);
   const detectorRef = useRef<SilenceDetector | null>(null);
   const lastStateRef = useRef<AppState>('idle');
   /**
@@ -61,7 +69,9 @@ export default function App(): JSX.Element {
     soundEnabled: true,
     hotkeyMode: 'toggle',
     silenceThresholdRms: 0.015,
-    silenceDurationMs: 10_000
+    silenceDurationMs: 10_000,
+    streaming: false,
+    streamingChunkMs: 5_000
   });
 
   // Read settings on mount + watch for changes so device/sample rate updates
@@ -77,7 +87,9 @@ export default function App(): JSX.Element {
         soundEnabled: s.ui.soundEnabled,
         hotkeyMode: s.hotkey.mode,
         silenceThresholdRms: s.audio.silenceThresholdRms,
-        silenceDurationMs: s.audio.silenceDurationMs
+        silenceDurationMs: s.audio.silenceDurationMs,
+        streaming: s.transcription.streaming,
+        streamingChunkMs: s.transcription.streamingChunkMs
       };
     });
     const off = window.voiceToText.settings.onChange((s) => {
@@ -88,7 +100,9 @@ export default function App(): JSX.Element {
         soundEnabled: s.ui.soundEnabled,
         hotkeyMode: s.hotkey.mode,
         silenceThresholdRms: s.audio.silenceThresholdRms,
-        silenceDurationMs: s.audio.silenceDurationMs
+        silenceDurationMs: s.audio.silenceDurationMs,
+        streaming: s.transcription.streaming,
+        streamingChunkMs: s.transcription.streamingChunkMs
       };
     });
     return () => {
@@ -99,48 +113,84 @@ export default function App(): JSX.Element {
 
   // Subscribe to main-process events.
   useEffect(() => {
+    const attachSilenceDetector = (analyser: AnalyserNode): void => {
+      if (configRef.current.hotkeyMode !== 'auto-stop') return;
+      const cfg = configRef.current;
+      const detector = new SilenceDetector({
+        rmsSource: rmsFromAnalyser(analyser),
+        thresholdRms: cfg.silenceThresholdRms,
+        silenceDurationMs: cfg.silenceDurationMs,
+        onSilenceTimeout: () => {
+          setSilenceRemainingMs(null);
+          window.voiceToText.recording.autoStop();
+        },
+        onUpdate: ({ silentForMs, isSilent }) => {
+          if (!isSilent) {
+            setSilenceRemainingMs(null);
+            return;
+          }
+          setSilenceRemainingMs(Math.max(0, cfg.silenceDurationMs - silentForMs));
+        }
+      });
+      detectorRef.current = detector;
+      detector.start();
+    };
+
     const offStart = window.voiceToText.recording.onStart(async () => {
       const myToken = ++startTokenRef.current;
+      const cfg = configRef.current;
       try {
-        if (configRef.current.soundEnabled) startBeep();
-        const handle = await startRecording({
-          deviceId: configRef.current.deviceId,
-          sampleRate: configRef.current.sampleRate
-        });
-        // Race check — if a stop arrived while we were awaiting getUserMedia,
-        // startTokenRef will have been bumped. Release the just-opened stream
-        // instead of stashing it (which would leak the mic indefinitely).
-        if (myToken !== startTokenRef.current) {
-          handle.cancel();
-          return;
-        }
-        handleRef.current = handle;
-        setAnalyser(handle.analyser);
+        if (cfg.soundEnabled) startBeep();
 
-        // Sprint 4d Phase 2 — Auto-stop VAD. Spin up a SilenceDetector that
-        // polls the same analyser node. When silence persists for the
-        // configured duration we ping main, which runs the same path as a
-        // user-pressed stop. Detector is torn down in onStop/cleanup.
-        if (configRef.current.hotkeyMode === 'auto-stop') {
-          const cfg = configRef.current;
-          const detector = new SilenceDetector({
-            rmsSource: rmsFromAnalyser(handle.analyser),
-            thresholdRms: cfg.silenceThresholdRms,
-            silenceDurationMs: cfg.silenceDurationMs,
-            onSilenceTimeout: () => {
-              setSilenceRemainingMs(null);
-              window.voiceToText.recording.autoStop();
+        // Sprint 4d Phase 4 — branch on streaming mode. Both branches end
+        // up registering the same analyser for the waveform UI + the
+        // SilenceDetector (auto-stop mode).
+        if (cfg.streaming) {
+          const chunked = await startChunkedRecording(
+            {
+              deviceId: cfg.deviceId,
+              sampleRate: cfg.sampleRate,
+              chunkDurationMs: cfg.streamingChunkMs
             },
-            onUpdate: ({ silentForMs, isSilent }) => {
-              if (!isSilent) {
-                setSilenceRemainingMs(null);
-                return;
+            {
+              onChunk: ({ data, mimeType, index, isFinal, durationMs }) => {
+                window.voiceToText.recording.sendChunk({
+                  data,
+                  mimeType,
+                  index,
+                  isFinal,
+                  durationMs
+                });
+              },
+              onError: (err) => {
+                // eslint-disable-next-line no-console
+                console.error('chunked recorder error', err);
               }
-              setSilenceRemainingMs(Math.max(0, cfg.silenceDurationMs - silentForMs));
             }
+          );
+          if (myToken !== startTokenRef.current) {
+            chunked.cancel();
+            return;
+          }
+          chunkedRef.current = chunked;
+          setAnalyser(chunked.analyser);
+          attachSilenceDetector(chunked.analyser);
+        } else {
+          const handle = await startRecording({
+            deviceId: cfg.deviceId,
+            sampleRate: cfg.sampleRate
           });
-          detectorRef.current = detector;
-          detector.start();
+          // Race check — if a stop arrived while we were awaiting
+          // getUserMedia, startTokenRef will have been bumped. Release
+          // the just-opened stream instead of stashing it (which would
+          // leak the mic indefinitely).
+          if (myToken !== startTokenRef.current) {
+            handle.cancel();
+            return;
+          }
+          handleRef.current = handle;
+          setAnalyser(handle.analyser);
+          attachSilenceDetector(handle.analyser);
         }
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -158,6 +208,25 @@ export default function App(): JSX.Element {
       detectorRef.current?.dispose();
       detectorRef.current = null;
       setSilenceRemainingMs(null);
+
+      // Streaming branch — flush the trailing chunk via stop(); the
+      // chunked recorder's onChunk callback emits it with isFinal=true
+      // which the controller treats as the "end of recording" trigger.
+      const chunked = chunkedRef.current;
+      chunkedRef.current = null;
+      if (chunked) {
+        setAnalyser(null);
+        try {
+          await chunked.stop();
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error('chunked stop failed', err);
+          window.voiceToText.recording.cancel();
+        }
+        return;
+      }
+
+      // Non-streaming branch — original behavior.
       const handle = handleRef.current;
       handleRef.current = null;
       setAnalyser(null);
@@ -185,6 +254,18 @@ export default function App(): JSX.Element {
       setState(update.state);
       setText(update.text ?? '');
       setMessage(update.message ?? '');
+      // Sprint 4d Phase 4 — apply interim updates while recording, clear
+      // them once we leave the recording state so the success/error UI
+      // isn't polluted by stale streaming text.
+      if (update.state === 'recording') {
+        setInterimText(update.interimText ?? '');
+      } else if (
+        update.state === 'idle' ||
+        update.state === 'success' ||
+        update.state === 'error'
+      ) {
+        setInterimText('');
+      }
     });
 
     return () => {
@@ -241,6 +322,24 @@ export default function App(): JSX.Element {
     whiteSpace: 'nowrap'
   };
 
+  // Sprint 4d Phase 4 — interim text. Italic + slightly faded to signal
+  // "in progress". Multi-line OK but capped at 2 lines so the overlay
+  // height stays predictable; we show the tail end of the text (latest
+  // chunks) by slicing in JS rather than fighting CSS bidi.
+  const interimRow: CSSProperties = {
+    fontSize: 11,
+    opacity: 0.75,
+    fontStyle: 'italic',
+    marginTop: 2,
+    maxHeight: 32,
+    overflow: 'hidden',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    whiteSpace: 'normal',
+    wordBreak: 'break-word'
+  };
+
   const stateText =
     state === 'recording' ? `${labels[state]} ${formatTime(elapsedSec)}` : labels[state];
 
@@ -253,12 +352,19 @@ export default function App(): JSX.Element {
       ? `auto-stop ใน ${Math.ceil(silenceRemainingMs / 1000)}s`
       : null;
 
+  // Sprint 4d Phase 4 — interim streaming text takes priority over the
+  // auto-stop countdown when both could show. The countdown is implied
+  // by the silence anyway (no new text arriving).
   const subText =
     state === 'success'
       ? text
       : state === 'error'
         ? message || 'Unknown error'
-        : (autoStopHint ?? '');
+        : state === 'recording' && interimText
+          ? interimText
+          : (autoStopHint ?? '');
+
+  const isInterim = state === 'recording' && !!interimText;
 
   return (
     <>
@@ -274,7 +380,11 @@ export default function App(): JSX.Element {
         <StatusBadge state={state} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={titleRow}>{stateText}</div>
-          {subText && <div style={subtleRow}>{subText}</div>}
+          {subText && (
+            <div style={isInterim ? interimRow : subtleRow}>
+              {isInterim ? tailOfText(subText, 180) : subText}
+            </div>
+          )}
         </div>
         {state === 'recording' && analyser && configRef.current.showWaveform && (
           <Waveform analyser={analyser} width={96} height={36} />
@@ -290,4 +400,14 @@ function formatTime(sec: number): string {
     .padStart(1, '0');
   const ss = (sec % 60).toString().padStart(2, '0');
   return `${mm}:${ss}`;
+}
+
+/**
+ * Sprint 4d Phase 4 — show the last N characters of interim text so the
+ * user sees the most recently transcribed words (the "live" part) rather
+ * than the start of a long session. Prefix with ellipsis when truncated.
+ */
+function tailOfText(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `…${text.slice(-max)}`;
 }

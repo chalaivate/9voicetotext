@@ -3,6 +3,90 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-05-10 — Sprint 4d Phase 4 — Live chunked streaming transcription
+
+**Spec said:** Section 9 sketches a "streaming via Whisper SSE" idea but
+defers it to a future sprint. Phase 3 (single-recording streaming
+response) was originally planned first, but we're skipping straight to
+Phase 4 because the user's primary feel-goal is "text appears WHILE
+speaking", not "text wipes in faster after stop".
+
+**What landed:**
+
+- **`ChunkedRecorder`** (`src/renderer/overlay/recorder/chunked-recorder.ts`)
+  — records audio in fixed-size chunks (default 5s) by stop+restart of
+  `MediaRecorder` each interval. Each restart produces a complete WebM
+  file (Whisper API rejects partial WebM), with ~50-100ms gaps between
+  chunks. The same `getUserMedia` stream is shared across recorders so
+  the analyser node and waveform UI never blink. `cancel()` discards
+  in-flight chunks and releases the stream cleanly.
+- **`ChunkedTranscriber`** (`src/main/transcription/chunked-transcriber.ts`)
+  — receives chunks one at a time, transcribes each via the Whisper
+  client, and accumulates the running text. Crucially, it feeds the
+  previous chunks' text back as the Whisper `prompt` parameter
+  (truncated to ~800 chars to fit alongside the vocabulary prompt under
+  the ~244 token limit). This is what makes the seams between chunks
+  invisible — Whisper has the sentence context to handle words that
+  were cut mid-syllable. Chunks are processed in submission order via
+  an internal `inFlight` promise chain. A single failed chunk does NOT
+  abort the session; we log + skip + continue.
+- **New IPC channel** `recording:chunk` and a new
+  `controller.submitChunk()` method that hands chunks off to the
+  transcriber. Final chunk (`isFinal: true`) drives the same
+  `handleResult` → hallucination filter → injection path as the
+  non-streaming pipeline. Streaming captures `streamingActive` at
+  `start()` so a settings toggle mid-recording can't half-stream.
+- **Overlay UI live update** — `StateUpdate.interimText` carries the
+  running transcription. Overlay shows it under the timer in italic
+  faded style, capped at 2 lines, tail-truncated with `…` prefix so the
+  most recently spoken words are always visible. Cleared on
+  success/error/idle.
+- **Settings UI** — Transcription page gets a new "Live streaming
+  (experimental)" card with an on/off Toggle and a chunk-size dropdown
+  (3s / 5s / 8s / 10s, default 5s).
+- **Schema additions** — `transcription.streaming` (boolean, default
+  `false`) and `transcription.streamingChunkMs` (2000–15000, default
+  5000). Off-by-default so existing users get the validated
+  non-streaming pipeline until they opt in.
+
+**Why off by default:** the chunked path has more failure modes (chunk
+encoding errors, mid-word cuts, more API calls) than the single-
+recording path. We want users to opt in once they've confirmed it works
+in their network conditions and audio setup.
+
+**Trade-offs:**
+
+| Aspect             | Streaming                       | Non-streaming               |
+| ------------------ | ------------------------------- | --------------------------- |
+| Time-to-first-text | ~5-7s (chunk size + Whisper)    | ~2s after stop              |
+| Feel               | Live (text grows while talking) | Burst (text appears at end) |
+| API cost           | Same (audio-duration based)     | Same                        |
+| API call count     | N/5 calls per minute            | 1 call per recording        |
+| Failure mode       | Skip bad chunks                 | Whole recording fails       |
+
+**Tests:** 15 new (92 → 107 green).
+
+- `ChunkedTranscriber`: 8 unit tests (accumulation, prompt chaining,
+  final emit, error skipping, ordering under slow Whisper, session reset).
+- `buildChunkPrompt`: 3 tests (empty, append, tail truncation).
+- `RecordingController` streaming: 3 integration tests (chunk
+  accumulation + final inject, cancel-during-streaming, chunk failure
+  recovery).
+- `SettingsSchema`: 2 tests (defaults, chunk-ms range validation).
+
+**Out of scope / future work:**
+
+- Per-chunk `stream: true` SSE response (would shave ~1s per chunk by
+  showing partial text inside a chunk; layered on top would be Phase 3
+  on top of Phase 4).
+- VAD-aware chunk boundaries (split on silence using the existing
+  `SilenceDetector` instead of fixed time).
+- Edit/correct as later chunks reveal context (Whisper sometimes
+  revises earlier words when given more context — currently we treat
+  each chunk's output as final).
+
+---
+
 ## 2026-05-10 — Sprint 5 Packaging — UNSIGNED installers ship for v1.0
 
 **Spec said:** Section 13.1 calls for code-signed + notarized installers

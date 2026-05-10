@@ -69,7 +69,21 @@ export const SettingsSchema = z
          */
         filterHallucinations: z.boolean().default(true),
         enablePostProcessing: z.boolean().default(false),
-        postProcessPreset: z.string().default('default')
+        postProcessPreset: z.string().default('default'),
+        /**
+         * Sprint 4d Phase 4 — chunked live streaming. When ON, the
+         * renderer records in {@link streamingChunkMs} chunks; main
+         * transcribes each chunk as it arrives and broadcasts the
+         * interim text. Final chunk runs the same hallucination filter
+         * + injection path as the non-streaming pipeline.
+         */
+        streaming: z.boolean().default(false),
+        /**
+         * Chunk duration for streaming mode. Smaller = more responsive
+         * UI but more API overhead. Whisper rejects audio < ~100ms; we
+         * skip trailing chunks shorter than 500ms automatically.
+         */
+        streamingChunkMs: z.number().int().min(2_000).max(15_000).default(5_000)
       })
       .default({
         provider: 'whisper-api',
@@ -80,7 +94,9 @@ export const SettingsSchema = z
         vocabularyPresets: { coding: true, microsoft365: false, brandNames: true, thai: true },
         filterHallucinations: true,
         enablePostProcessing: false,
-        postProcessPreset: 'default'
+        postProcessPreset: 'default',
+        streaming: false,
+        streamingChunkMs: 5_000
       }),
     output: z
       .object({

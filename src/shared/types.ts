@@ -7,6 +7,13 @@ export interface StateUpdate {
   text?: string;
   message?: string;
   durationMs?: number;
+  /**
+   * Sprint 4d Phase 4 — interim text accumulating during a streaming
+   * recording. Only populated while `state === 'recording'` (or transient
+   * `processing` between chunks). The overlay shows this in muted style;
+   * the final transcription replaces it once the user stops.
+   */
+  interimText?: string;
 }
 
 export interface TranscribeSegment {

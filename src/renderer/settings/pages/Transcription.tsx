@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { Card, Field } from '../../shared/components/Card';
 import { Select } from '../../shared/components/Select';
+import { Toggle } from '../../shared/components/Toggle';
 import { ApiKeyInput } from '../components/ApiKeyInput';
 import { useSettings } from '../../shared/use-settings';
 import { tokens } from '../../shared/tokens';
@@ -89,6 +90,37 @@ export function TranscriptionPage(): JSX.Element {
             <div style={{ ...modelNote, color: tokens.color.textDim }}>{info.note}</div>
           )}
         </div>
+      </Card>
+
+      <Card
+        title="Live streaming (experimental)"
+        description="Records in chunks so you see the transcribed text appear while you're still talking. Best with gpt-4o models — whisper-1 has no streaming benefit."
+      >
+        <Field
+          label="Stream transcription while recording"
+          hint="Each chunk is sent to OpenAI on the fly. Same total cost (audio duration based)."
+        >
+          <Toggle
+            checked={settings.transcription.streaming}
+            onChange={(v) => void patch({ transcription: { streaming: v } })}
+            ariaLabel="Enable streaming transcription"
+          />
+        </Field>
+        <Field
+          label="Chunk size"
+          hint="Smaller = more responsive UI, more API calls. 5s is a good starting point."
+        >
+          <Select
+            value={String(settings.transcription.streamingChunkMs)}
+            onValueChange={(v) => void patch({ transcription: { streamingChunkMs: Number(v) } })}
+            options={[
+              { value: '3000', label: '3 seconds' },
+              { value: '5000', label: '5 seconds (recommended)' },
+              { value: '8000', label: '8 seconds' },
+              { value: '10000', label: '10 seconds' }
+            ]}
+          />
+        </Field>
       </Card>
 
       <Card

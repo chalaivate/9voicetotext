@@ -46,6 +46,38 @@ export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcD
     controller.autoStopFromSilence();
   });
 
+  // Sprint 4d Phase 4 — one chunk of audio in streaming mode. Controller
+  // hands it off to the ChunkedTranscriber which transcribes + accumulates
+  // and broadcasts interim updates back to the overlay.
+  ipcMain.on(
+    IPC.recording.chunk,
+    async (
+      _event,
+      payload: {
+        data: ArrayBuffer;
+        mimeType: string;
+        index: number;
+        isFinal: boolean;
+        durationMs: number;
+      }
+    ) => {
+      try {
+        await controller.submitChunk({
+          data: new Uint8Array(payload.data),
+          mimeType: payload.mimeType ?? 'audio/webm',
+          index: payload.index,
+          isFinal: !!payload.isFinal,
+          durationMs: payload.durationMs ?? 0
+        });
+      } catch (err) {
+        logger.error('chunk handler failed', {
+          err: (err as Error).message,
+          index: payload?.index
+        });
+      }
+    }
+  );
+
   // ---- Settings ----------------------------------------------------------
   ipcMain.handle(IPC.settings.get, async () => getSettings());
 

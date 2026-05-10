@@ -6,6 +6,7 @@ import { userFacingMessage } from '@main/transcription/errors';
 import type { WhisperClient } from '@main/transcription/whisper-client';
 import type { InjectMode, TextInjector } from '@main/injection/injector';
 import { filterHallucinations } from '@main/transcription/post-process';
+import { ChunkedTranscriber } from '@main/transcription/chunked-transcriber';
 import { AudioBuffer } from './audio-buffer';
 
 export interface RecordingControllerDeps {
@@ -29,6 +30,10 @@ export interface RecordingControllerDeps {
   getWhisperPrompt?: () => string;
   /** Read the current output mode (paste vs clipboard-only). Defaults to 'paste'. */
   getOutputMode?: () => InjectMode;
+  /** Sprint 4d Phase 4 — read whether streaming (chunked) mode is on. */
+  getStreaming?: () => boolean;
+  /** Read the active language for Whisper (or undefined for auto). */
+  getLanguage?: () => 'th' | 'en' | undefined;
   /** Override timers (for tests). */
   setTimer?: (ms: number, fn: () => void) => () => void;
 }
@@ -48,6 +53,10 @@ export class RecordingController {
    * the API response (gpt-4o-transcribe `json` format) doesn't include a
    * `duration` field. */
   private lastRecordingDurationMs = 0;
+  /** Sprint 4d Phase 4 — chunked transcriber for streaming mode. Lazy. */
+  private chunkedTranscriber: ChunkedTranscriber | null = null;
+  /** Whether the current recording is using streaming mode. Captured at start(). */
+  private streamingActive = false;
   private readonly setTimer: (ms: number, fn: () => void) => () => void;
 
   constructor(private readonly deps: RecordingControllerDeps) {
@@ -190,6 +199,14 @@ export class RecordingController {
     logger.info('recording cancelled', { state: this.state });
     this.clearTimers();
     this.buffer.clear();
+    // Streaming mode: discard the in-progress transcriber session and
+    // any chunks that arrive late.
+    if (this.streamingActive) {
+      this.streamingActive = false;
+      // Reset the transcriber to drop any queued work; it will be
+      // re-initialized on the next start().
+      this.chunkedTranscriber = null;
+    }
     // Tell the renderer to stop its MediaRecorder + release the mic stream
     // so the OS mic indicator turns off. Without this the stream leaks and
     // the orange dot in the macOS menu bar stays on indefinitely.
@@ -205,6 +222,12 @@ export class RecordingController {
       this.clearHideTimer();
     }
     this.recordingStartedAt = Date.now();
+    // Sprint 4d Phase 4 — capture streaming mode at start so a settings
+    // toggle mid-recording can't leave us with a half-streaming session.
+    this.streamingActive = this.deps.getStreaming?.() ?? false;
+    if (this.streamingActive) {
+      this.ensureChunkedTranscriber().startSession();
+    }
     this.deps.showOverlay();
     this.transition({ state: 'recording' });
     this.deps.requestRendererStart();
@@ -215,12 +238,94 @@ export class RecordingController {
     });
   }
 
+  private ensureChunkedTranscriber(): ChunkedTranscriber {
+    if (this.chunkedTranscriber) return this.chunkedTranscriber;
+    this.chunkedTranscriber = new ChunkedTranscriber({
+      whisper: this.deps.whisper,
+      getVocabularyPrompt: () => this.deps.getWhisperPrompt?.() ?? '',
+      ...(this.deps.getLanguage ? { getLanguage: this.deps.getLanguage } : {}),
+      onInterimUpdate: (text) => {
+        // Only broadcast interim while we're still recording — once we
+        // hit `processing` (final chunk) the transcriber finalizes via
+        // onFinal anyway, and pushing extra interim updates after that
+        // would race with the inject path.
+        if (this.state === 'recording') {
+          this.transition({ state: 'recording', interimText: text });
+        }
+      },
+      onFinal: (text, totalDurationMs) => {
+        this.lastRecordingDurationMs = totalDurationMs;
+        // Replay through the same path as the non-streaming pipeline so
+        // hallucination filtering + injection are identical.
+        void this.handleResult({
+          text,
+          language: this.deps.getLanguage?.() ?? '',
+          duration: totalDurationMs / 1000,
+          segments: []
+        });
+      },
+      onChunkError: (chunkIndex, err) => {
+        logger.warn('chunk transcription error (continuing)', {
+          chunkIndex,
+          error: err.message
+        });
+      }
+    });
+    return this.chunkedTranscriber;
+  }
+
+  /**
+   * Sprint 4d Phase 4 — accept one chunk from the renderer's
+   * ChunkedRecorder. The chunked transcriber takes care of ordering,
+   * prompt chaining, and the final hand-off to handleResult.
+   */
+  async submitChunk(payload: {
+    data: Uint8Array;
+    mimeType: string;
+    index: number;
+    isFinal: boolean;
+    durationMs: number;
+  }): Promise<void> {
+    if (!this.streamingActive) {
+      logger.warn('chunk arrived but streaming is not active', { index: payload.index });
+      return;
+    }
+    if (this.state === 'idle') {
+      // Renderer flushed a chunk after a cancel — discard.
+      logger.debug('chunk arrived post-cancel, discarding', { index: payload.index });
+      return;
+    }
+    // The final chunk transitions us into processing so the overlay can
+    // show "transcribing…" while the last Whisper request resolves.
+    if (payload.isFinal && this.state === 'recording') {
+      const durationMs = Date.now() - this.recordingStartedAt;
+      this.cancelMaxDurationTimer?.();
+      this.cancelMaxDurationTimer = null;
+      this.transition({ state: 'processing', durationMs });
+    }
+    const transcriber = this.ensureChunkedTranscriber();
+    await transcriber.submit({
+      audio: Buffer.from(payload.data),
+      mimeType: payload.mimeType,
+      index: payload.index,
+      isFinal: payload.isFinal,
+      durationMs: payload.durationMs
+    });
+  }
+
   private stop(): void {
     this.cancelMaxDurationTimer?.();
     this.cancelMaxDurationTimer = null;
     const durationMs = Date.now() - this.recordingStartedAt;
     this.lastRecordingDurationMs = durationMs;
-    this.transition({ state: 'processing', durationMs });
+    // In streaming mode the final chunk drives the processing transition
+    // (it's the chunk's onFinal callback that runs handleResult). We
+    // still tell the renderer to stop here — it will flush a trailing
+    // chunk via submitChunk(isFinal=true). Don't transition state yet;
+    // submitChunk will do it once the trailing chunk arrives.
+    if (!this.streamingActive) {
+      this.transition({ state: 'processing', durationMs });
+    }
     this.deps.requestRendererStop();
   }
 

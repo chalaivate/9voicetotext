@@ -71,7 +71,12 @@ if (ensureSingleInstance()) {
         s.transcription.customVocabulary
       );
     },
-    getOutputMode: () => getSettings().output.mode
+    getOutputMode: () => getSettings().output.mode,
+    getStreaming: () => getSettings().transcription.streaming,
+    getLanguage: () => {
+      const lang = getSettings().transcription.language;
+      return lang === 'auto' ? undefined : lang;
+    }
   });
 
   setupLifecycle(() => {

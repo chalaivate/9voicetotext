@@ -99,6 +99,24 @@ describe('SettingsSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('streaming defaults to off + 5000ms chunk', () => {
+    const parsed = SettingsSchema.parse({});
+    expect(parsed.transcription.streaming).toBe(false);
+    expect(parsed.transcription.streamingChunkMs).toBe(5_000);
+  });
+
+  it('rejects streamingChunkMs outside [2000, 15000]', () => {
+    expect(SettingsSchema.safeParse({ transcription: { streamingChunkMs: 1_000 } }).success).toBe(
+      false
+    );
+    expect(SettingsSchema.safeParse({ transcription: { streamingChunkMs: 20_000 } }).success).toBe(
+      false
+    );
+    expect(SettingsSchema.safeParse({ transcription: { streamingChunkMs: 5_000 } }).success).toBe(
+      true
+    );
+  });
+
   it('rejects out-of-range silence detection values', () => {
     expect(SettingsSchema.safeParse({ audio: { silenceThresholdRms: 2 } }).success).toBe(false);
     expect(SettingsSchema.safeParse({ audio: { silenceThresholdRms: -0.1 } }).success).toBe(false);

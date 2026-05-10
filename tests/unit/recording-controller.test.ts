@@ -17,6 +17,7 @@ interface Mocks {
 interface ControllerOptions {
   mode?: 'toggle' | 'push-to-talk' | 'auto-stop';
   filterHallucinations?: boolean;
+  streaming?: boolean;
 }
 
 function makeController(opts: ControllerOptions = {}): {
@@ -57,6 +58,7 @@ function makeController(opts: ControllerOptions = {}): {
     broadcastState,
     getHotkeyMode: () => opts.mode ?? 'toggle',
     getFilterHallucinations: () => opts.filterHallucinations ?? false,
+    getStreaming: () => opts.streaming ?? false,
     setTimer
   });
 
@@ -320,5 +322,95 @@ describe('RecordingController', () => {
       expect.objectContaining({ mode: 'paste' })
     );
     expect(controller.getState()).toBe('success');
+  });
+
+  // ----- Sprint 4d Phase 4 — Streaming (chunked) mode --------------------
+
+  it('streaming: chunks accumulate then final triggers inject', async () => {
+    const { controller, mocks } = makeController({ streaming: true });
+    mocks.whisperTranscribe
+      .mockResolvedValueOnce({ ...sampleResult, text: 'hello' })
+      .mockResolvedValueOnce({ ...sampleResult, text: 'world' });
+
+    controller.pressed(); // start
+    expect(controller.getState()).toBe('recording');
+
+    await controller.submitChunk({
+      data: new Uint8Array([1]),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: false,
+      durationMs: 5000
+    });
+
+    // Interim broadcast captured.
+    const interimCalls = mocks.broadcastState.mock.calls.filter(
+      ([u]) => u.state === 'recording' && u.interimText
+    );
+    expect(interimCalls.length).toBeGreaterThan(0);
+    expect(interimCalls.at(-1)?.[0].interimText).toBe('hello');
+
+    // Final chunk: transitions to processing then injects.
+    await controller.submitChunk({
+      data: new Uint8Array([2]),
+      mimeType: 'audio/webm',
+      index: 1,
+      isFinal: true,
+      durationMs: 3000
+    });
+
+    expect(mocks.injectorInject).toHaveBeenCalledWith(
+      'hello world',
+      expect.objectContaining({ mode: 'paste' })
+    );
+    expect(controller.getState()).toBe('success');
+  });
+
+  it('streaming: cancel discards in-progress session and ignores late chunks', async () => {
+    const { controller, mocks } = makeController({ streaming: true });
+    mocks.whisperTranscribe.mockResolvedValue({ ...sampleResult, text: 'late' });
+
+    controller.pressed();
+    controller.cancel();
+    expect(controller.getState()).toBe('idle');
+
+    // Chunk arriving after cancel — should NOT call Whisper.
+    await controller.submitChunk({
+      data: new Uint8Array([1]),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: true,
+      durationMs: 5000
+    });
+    expect(mocks.whisperTranscribe).not.toHaveBeenCalled();
+    expect(mocks.injectorInject).not.toHaveBeenCalled();
+  });
+
+  it('streaming: chunk failure does not abort the session', async () => {
+    const { controller, mocks } = makeController({ streaming: true });
+    mocks.whisperTranscribe
+      .mockRejectedValueOnce(new Error('blip'))
+      .mockResolvedValueOnce({ ...sampleResult, text: 'recovered' });
+
+    controller.pressed();
+    await controller.submitChunk({
+      data: new Uint8Array([1]),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: false,
+      durationMs: 5000
+    });
+    await controller.submitChunk({
+      data: new Uint8Array([2]),
+      mimeType: 'audio/webm',
+      index: 1,
+      isFinal: true,
+      durationMs: 5000
+    });
+
+    expect(mocks.injectorInject).toHaveBeenCalledWith(
+      'recovered',
+      expect.objectContaining({ mode: 'paste' })
+    );
   });
 });

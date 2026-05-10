@@ -5,7 +5,9 @@ export const IPC = {
     audio: 'recording:audio',
     cancel: 'recording:cancel',
     /** Sprint 4d Phase 2 — renderer-detected silence triggers auto-stop. */
-    autoStop: 'recording:autoStop'
+    autoStop: 'recording:autoStop',
+    /** Sprint 4d Phase 4 — one chunk of audio in streaming mode. */
+    chunk: 'recording:chunk'
   },
   state: {
     update: 'state:update'

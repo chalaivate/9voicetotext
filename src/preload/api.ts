@@ -36,6 +36,10 @@ export interface SettingsShape {
     filterHallucinations: boolean;
     enablePostProcessing: boolean;
     postProcessPreset: string;
+    /** Sprint 4d Phase 4 — chunked streaming during recording. */
+    streaming: boolean;
+    /** Chunk size (ms) for streaming mode. Default 5000. */
+    streamingChunkMs: number;
   };
   output: { mode: 'paste' | 'clipboard' | 'both'; restoreClipboard: boolean; pasteDelayMs: number };
   ui: {
@@ -77,6 +81,19 @@ export interface VoiceToTextApi {
      * duration. Main runs the same path as a user-pressed stop.
      */
     autoStop(): void;
+    /**
+     * Sprint 4d Phase 4 — submit one audio chunk in streaming mode.
+     * Main transcribes it and broadcasts an interim text update. The
+     * `isFinal=true` chunk drives the same final-text path as
+     * `sendAudio` does in non-streaming mode.
+     */
+    sendChunk(payload: {
+      data: ArrayBuffer;
+      mimeType: string;
+      index: number;
+      isFinal: boolean;
+      durationMs: number;
+    }): void;
   };
   state: {
     onUpdate(cb: (update: StateUpdate) => void): Unsubscribe;
@@ -111,7 +128,8 @@ export const api: VoiceToTextApi = {
     onStop: (cb) => subscribe<void>(IPC.recording.stop, () => cb()),
     sendAudio: (data, mimeType) => ipcRenderer.send(IPC.recording.audio, { data, mimeType }),
     cancel: () => ipcRenderer.send(IPC.recording.cancel),
-    autoStop: () => ipcRenderer.send(IPC.recording.autoStop)
+    autoStop: () => ipcRenderer.send(IPC.recording.autoStop),
+    sendChunk: (payload) => ipcRenderer.send(IPC.recording.chunk, payload)
   },
   state: {
     onUpdate: (cb) => subscribe<StateUpdate>(IPC.state.update, cb)
