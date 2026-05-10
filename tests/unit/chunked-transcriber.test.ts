@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ChunkedTranscriber, buildChunkPrompt } from '@main/transcription/chunked-transcriber';
+import {
+  ChunkedTranscriber,
+  buildChunkPrompt,
+  dedupeChunkOverlap
+} from '@main/transcription/chunked-transcriber';
 import type { TranscribeResult } from '@shared/types';
 
 interface Harness {
@@ -235,6 +239,74 @@ describe('ChunkedTranscriber', () => {
     expect(h.onFinal).toHaveBeenCalledWith('A B', 10_000);
   });
 
+  it('dedupes prompt-echo across chunks (regression test)', async () => {
+    const h = makeHarness();
+    // Simulate the bug: Whisper echoes the previous chunk's text at the
+    // start of the next chunk's output (because we send it as `prompt`).
+    h.whisper.transcribe
+      .mockResolvedValueOnce(result('สวัสดีครับ'))
+      .mockResolvedValueOnce(result('สวัสดีครับ ผมชื่อเวท'))
+      .mockResolvedValueOnce(result('ผมชื่อเวท ขอบคุณมากครับ'));
+
+    await h.transcriber.submit({
+      audio: Buffer.from(audio),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: false,
+      durationMs: 5000
+    });
+    await h.transcriber.submit({
+      audio: Buffer.from(audio),
+      mimeType: 'audio/webm',
+      index: 1,
+      isFinal: false,
+      durationMs: 5000
+    });
+    await h.transcriber.submit({
+      audio: Buffer.from(audio),
+      mimeType: 'audio/webm',
+      index: 2,
+      isFinal: true,
+      durationMs: 5000
+    });
+
+    // Without dedupe this would be:
+    // "สวัสดีครับ สวัสดีครับ ผมชื่อเวท ผมชื่อเวท ขอบคุณมากครับ"
+    expect(h.transcriber.getRunningText()).toBe('สวัสดีครับ ผมชื่อเวท ขอบคุณมากครับ');
+  });
+
+  it('drops a chunk that is a pure prompt-echo (no new content)', async () => {
+    const h = makeHarness();
+    h.whisper.transcribe
+      .mockResolvedValueOnce(result('hello world'))
+      .mockResolvedValueOnce(result('hello world')) // pure echo, no new content
+      .mockResolvedValueOnce(result('hello world! goodbye'));
+
+    await h.transcriber.submit({
+      audio: Buffer.from(audio),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: false,
+      durationMs: 5000
+    });
+    await h.transcriber.submit({
+      audio: Buffer.from(audio),
+      mimeType: 'audio/webm',
+      index: 1,
+      isFinal: false,
+      durationMs: 5000
+    });
+    await h.transcriber.submit({
+      audio: Buffer.from(audio),
+      mimeType: 'audio/webm',
+      index: 2,
+      isFinal: true,
+      durationMs: 5000
+    });
+
+    expect(h.transcriber.getRunningText()).toBe('hello world! goodbye');
+  });
+
   it('startSession resets state for a new recording', async () => {
     const h = makeHarness();
     h.whisper.transcribe.mockResolvedValueOnce(result('first session'));
@@ -259,6 +331,44 @@ describe('ChunkedTranscriber', () => {
       durationMs: 5000
     });
     expect(h.transcriber.getRunningText()).toBe('second session');
+  });
+});
+
+describe('dedupeChunkOverlap', () => {
+  it('returns chunk unchanged when there is no running text', () => {
+    expect(dedupeChunkOverlap('', 'hello world')).toBe('hello world');
+  });
+
+  it('returns empty string when chunk is a pure echo of running tail', () => {
+    expect(dedupeChunkOverlap('สวัสดีครับ', 'สวัสดีครับ')).toBe('');
+  });
+
+  it('strips the overlap when chunk starts with running suffix', () => {
+    expect(dedupeChunkOverlap('สวัสดีครับ', 'สวัสดีครับ ผมชื่อเวท')).toBe('ผมชื่อเวท');
+  });
+
+  it('English overlap with whitespace normalization', () => {
+    expect(dedupeChunkOverlap('hello world', 'world how are you')).toBe('how are you');
+  });
+
+  it('returns chunk unchanged when no overlap exists', () => {
+    expect(dedupeChunkOverlap('abcdef', 'xyz123')).toBe('xyz123');
+  });
+
+  it('ignores tiny overlaps (under 5 chars) to avoid false matches', () => {
+    // last char of running matches start of chunk — 1 char only — should not trim
+    expect(dedupeChunkOverlap('hi', 'i am here')).toBe('i am here');
+  });
+
+  it('caps search at 200 chars even with very long running text', () => {
+    const longRunning = 'x'.repeat(5000) + ' alpha beta';
+    expect(dedupeChunkOverlap(longRunning, 'alpha beta gamma')).toBe('gamma');
+  });
+
+  it('handles long Thai overlap typical of Whisper prompt-echo', () => {
+    const running = 'ขอทดลองพูดประโยคยาวๆเพื่อทดสอบการถอดเสียงในโหมดสตรีมมิ่ง';
+    const echoed = `${running} และต่อด้วยเนื้อหาใหม่`;
+    expect(dedupeChunkOverlap(running, echoed)).toBe('และต่อด้วยเนื้อหาใหม่');
   });
 });
 

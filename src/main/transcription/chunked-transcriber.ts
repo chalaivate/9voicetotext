@@ -68,6 +68,77 @@ export function buildChunkPrompt(vocab: string, runningText: string): string {
   return `${vocab} ${tail}`.trim();
 }
 
+/**
+ * Whisper sometimes ECHOES the `prompt` parameter back at the start of its
+ * output instead of using it as pure context. With chunked streaming this
+ * shows up as duplicated text: chunk N's `prompt` includes chunk (N-1)'s
+ * text, which then appears verbatim at the start of chunk N's transcription.
+ * This helper trims the overlap before we append.
+ *
+ * Strategy: find the longest suffix of `running` that's also a prefix of
+ * `chunk` (down to a minimum of 5 chars to avoid matching tiny common
+ * fragments), then strip that prefix from the chunk. If the chunk is
+ * entirely contained in the recent running text, drop it.
+ *
+ * Cap the search at the last 300 chars of `running` so the cost stays
+ * O(1) regardless of session length.
+ */
+export function dedupeChunkOverlap(running: string, chunk: string): string {
+  if (!running || !chunk) return chunk;
+  // Normalize internal whitespace for comparison so "abc  def" matches
+  // "abc def" — but we trim from the ORIGINAL chunk so we don't lose
+  // any user-meaningful spacing.
+  const normalize = (s: string): string => s.replace(/\s+/g, ' ').trim();
+  const normRun = normalize(running);
+  const normChunk = normalize(chunk);
+  if (!normRun || !normChunk) return chunk;
+  // Pure-echo case: the entire chunk is contained in the tail of running.
+  // Drop completely — Whisper produced no new content.
+  const tailWindow = normRun.slice(-300);
+  if (tailWindow.endsWith(normChunk)) {
+    return '';
+  }
+  const maxOverlap = Math.min(tailWindow.length, normChunk.length, 200);
+  const minOverlap = 5;
+  for (let len = maxOverlap; len >= minOverlap; len--) {
+    if (tailWindow.endsWith(normChunk.slice(0, len))) {
+      // Trim `len` characters of meaningful content from the start of
+      // the original chunk. Walk char-by-char skipping any leading
+      // whitespace in the chunk so the count stays consistent with the
+      // normalized comparison.
+      return trimNormalizedPrefix(chunk, len);
+    }
+  }
+  return chunk;
+}
+
+/**
+ * Skip the first `nNormalizedChars` non-whitespace-collapsed characters
+ * of `s`, then trim leading whitespace from what's left. Mirrors the
+ * normalization used in {@link dedupeChunkOverlap} so an overlap match
+ * found on normalized strings translates back to the original.
+ */
+function trimNormalizedPrefix(s: string, nNormalizedChars: number): string {
+  let consumed = 0;
+  let i = 0;
+  let inWhitespaceRun = false;
+  while (i < s.length && consumed < nNormalizedChars) {
+    const ch = s[i]!;
+    if (/\s/.test(ch)) {
+      if (!inWhitespaceRun && consumed > 0) {
+        // A normalized space counts as one consumed char.
+        consumed++;
+        inWhitespaceRun = true;
+      }
+    } else {
+      consumed++;
+      inWhitespaceRun = false;
+    }
+    i++;
+  }
+  return s.slice(i).replace(/^\s+/, '');
+}
+
 export class ChunkedTranscriber {
   private runningText = '';
   private totalDurationMs = 0;
@@ -124,15 +195,34 @@ export class ChunkedTranscriber {
       });
       const text = (result.text ?? '').trim();
       if (text) {
-        // Insert a space at the boundary unless one of the sides already
-        // has whitespace. Thai text often runs without spaces; we err on
-        // the side of inserting one because joiners can be removed at
-        // post-process time but missing-spaces are harder to fix.
-        if (this.runningText && !/\s$/.test(this.runningText) && !/^\s/.test(text)) {
-          this.runningText += ' ';
+        // Whisper occasionally echoes the `prompt` parameter back at the
+        // start of its output rather than treating it as pure context.
+        // With chunk-N's prompt = chunk-(N-1)'s text, that produces
+        // duplicated leading text. Strip the overlap before appending.
+        const deduped = dedupeChunkOverlap(this.runningText, text);
+        if (deduped) {
+          // Insert a space at the boundary unless either side already
+          // has whitespace OR the new chunk starts with a punctuation
+          // mark that attaches to the previous word (".", "!", ",",
+          // closing brackets, etc.). Thai text often runs without
+          // spaces but punctuation rules are universal.
+          const startsWithAttachingPunct = /^[.!?,;:)\]}»」』]/.test(deduped);
+          if (
+            this.runningText &&
+            !/\s$/.test(this.runningText) &&
+            !/^\s/.test(deduped) &&
+            !startsWithAttachingPunct
+          ) {
+            this.runningText += ' ';
+          }
+          this.runningText += deduped;
+          this.successCount++;
+        } else {
+          // Pure prompt-echo (no new content). Don't bump successCount
+          // and don't append — but DO refresh the UI so the user sees
+          // the "alive" signal that a chunk just landed.
+          logger.debug('chunk was pure prompt-echo, dropped', { index: payload.index });
         }
-        this.runningText += text;
-        this.successCount++;
         this.deps.onInterimUpdate(this.runningText);
       } else {
         // Empty chunk text — likely silent stretch. Don't append, but do
