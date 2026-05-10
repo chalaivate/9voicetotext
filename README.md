@@ -26,7 +26,7 @@ is pasted at your cursor in any app (VS Code, Claude Code, Word, Slack, etc.).
 ## Setup
 
 ```bash
-git clone https://github.com/9expert-training/9voicetotext.git
+git clone https://github.com/chalaivate/9voicetotext.git
 cd 9voicetotext
 npm install
 cp .env.example .env.local   # paste your OpenAI key
@@ -68,7 +68,7 @@ Character Picker. If the hotkey appears to do nothing, disable it at
 
 ## Install (end users)
 
-Pre-built installers are attached to each [GitHub Release](https://github.com/9expert-training/9voicetotext/releases).
+Pre-built installers are attached to each [GitHub Release](https://github.com/chalaivate/9voicetotext/releases).
 
 | Platform                              | Download                              |
 | ------------------------------------- | ------------------------------------- |

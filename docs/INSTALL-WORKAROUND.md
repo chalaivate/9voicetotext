@@ -101,7 +101,7 @@ the first time you record. Click **Yes**.
 
 ## 🆘 Still stuck?
 
-Open an issue at <https://github.com/9expert-training/9voicetotext/issues>
+Open an issue at <https://github.com/chalaivate/9voicetotext/issues>
 with:
 
 - macOS / Windows version

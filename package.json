@@ -5,7 +5,7 @@
   "main": "./out/main/index.js",
   "author": "9Expert Training <info@9expert.co.th>",
   "license": "MIT",
-  "homepage": "https://github.com/9expert-training/9voicetotext",
+  "homepage": "https://github.com/chalaivate/9voicetotext",
   "private": true,
   "engines": {
     "node": ">=20"

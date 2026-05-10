@@ -94,7 +94,7 @@ jobs:
 
             ⚠️ **Unsigned build** — first install on macOS / Windows requires
             a click-through to bypass Gatekeeper / SmartScreen. See
-            [INSTALL-WORKAROUND.md](https://github.com/9expert-training/9voicetotext/blob/main/docs/INSTALL-WORKAROUND.md).
+            [INSTALL-WORKAROUND.md](https://github.com/chalaivate/9voicetotext/blob/main/docs/INSTALL-WORKAROUND.md).
 
             ### Downloads
             - **macOS Apple Silicon (M1/M2/M3/M4):** `9VoiceToText-${{ github.ref_name }}-arm64.dmg`

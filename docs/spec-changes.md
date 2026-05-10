@@ -244,7 +244,7 @@ Removed the dead dep to slim the install surface.
 - Internal preload namespace: `window.voicePrompt` → `window.voiceToText`,
   `VoicePromptApi` → `VoiceToTextApi`
 - Log paths: `~/Library/Logs/9voicetotext/`
-- GitHub repo (planned): `9expert-training/9voicetotext`
+- GitHub repo (planned): `chalaivate/9voicetotext`
 
 **Why:** another app on the user's machine is already named `9voiceprompt`
 and was claiming the same Electron `userData` directory + single-instance
