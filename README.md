@@ -6,12 +6,15 @@ Built on Electron + TypeScript + React + Tailwind, powered by OpenAI Whisper.
 Hold a global hotkey, speak Thai/English/mixed, release — the transcribed text
 is pasted at your cursor in any app (VS Code, Claude Code, Word, Slack, etc.).
 
-> **Status:** Sprint 3 (Injection + UX Polish) complete. The current build is
-> daily-driver-ready — hotkey → record → Whisper → text appears at your cursor
-> in any focused app. Verified working in TextEdit, Microsoft Word, Chrome,
-> Google Keep, and the Claude Code terminal.
-> Sprint 4 (Settings UI + History + Onboarding + keytar) is up next.
-> Full roadmap: see `docs/spec-changes.md` and the technical spec.
+> **Status:** Sprint 4d Phase 2 + Sprint 5 Packaging complete (May 2026).
+> Daily-driver-ready with **3 hotkey modes** (toggle, push-to-talk, **auto-stop on
+> silence**), **gpt-4o-transcribe** as default model, hallucination filter,
+> custom vocabulary, clipboard-only output mode for paste-blocking apps, and
+> **shippable installers** for macOS (arm64 + x64 DMG) and Windows
+> (NSIS installer + portable .exe). v1.0 ships unsigned — see
+> [`docs/INSTALL-WORKAROUND.md`](docs/INSTALL-WORKAROUND.md) for first-run.
+> Streaming response (Phase 3) and Live chunked streaming (Phase 4) are next.
+> Full changelog: [`docs/spec-changes.md`](docs/spec-changes.md).
 
 ## Requirements
 
@@ -63,13 +66,35 @@ silently and you'll see an orange overlay asking you to paste manually
 Character Picker. If the hotkey appears to do nothing, disable it at
 **System Settings → Keyboard → Keyboard Shortcuts → Input Sources**.
 
-## Build
+## Install (end users)
+
+Pre-built installers are attached to each [GitHub Release](https://github.com/9expert-training/9voicetotext/releases).
+
+| Platform                              | Download                              |
+| ------------------------------------- | ------------------------------------- |
+| **macOS Apple Silicon** (M1/M2/M3/M4) | `9VoiceToText-<version>-arm64.dmg`    |
+| **macOS Intel**                       | `9VoiceToText-<version>-x64.dmg`      |
+| **Windows installer**                 | `9VoiceToText-Setup-<version>.exe`    |
+| **Windows portable**                  | `9VoiceToText-Portable-<version>.exe` |
+
+⚠️ **Unsigned build.** First launch shows a Gatekeeper / SmartScreen warning
+because we don't yet have code-signing certs. The bypass is one click — see
+[`docs/INSTALL-WORKAROUND.md`](docs/INSTALL-WORKAROUND.md) for the
+step-by-step (right-click → Open on macOS, More info → Run anyway on Windows).
+
+## Build (maintainers)
 
 ```bash
 npm run build         # build all three processes
-npm run build:mac     # produce a DMG (unsigned in Sprint 5; signing later)
-npm run build:win     # produce an NSIS installer
+npm run build:mac     # produce arm64 + x64 DMGs in dist/
+npm run build:win     # produce NSIS installer + portable .exe (Windows only)
 ```
+
+The `build:mac` script must run on macOS; `build:win` must run on Windows
+(cross-compilation isn't reliable for either platform's installer format).
+Use the GitHub Actions release workflow at `.github/workflows/release.yml`
+to build both in parallel — push a `v*.*.*` tag and a draft GitHub Release
+appears with all artifacts attached.
 
 ## Project layout (per spec Section 7)
 

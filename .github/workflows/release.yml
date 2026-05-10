@@ -1,0 +1,103 @@
+# Sprint 5 Release Pipeline
+#
+# Triggered on tag push (v*.*.*). Builds Mac DMG + Windows NSIS+portable in
+# parallel on platform-native runners (macOS and Windows can't cross-compile
+# each other's installers reliably). Uploads all artifacts to a draft GitHub
+# Release that the maintainer publishes manually.
+#
+# v1.0 ships UNSIGNED — no Apple Developer account, no Windows code-signing
+# cert. The release notes link to docs/INSTALL-WORKAROUND.md so users know
+# how to bypass Gatekeeper / SmartScreen.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  # Allow manual dispatch for dry-run smoke testing without cutting a tag.
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed by softprops/action-gh-release to publish
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: build:mac
+            artifact-glob: |
+              dist/*.dmg
+              dist/*.dmg.blockmap
+          - os: windows-latest
+            script: build:win
+            artifact-glob: |
+              dist/*.exe
+              dist/*.exe.blockmap
+              dist/*-Setup-*.exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # Native deps (keytar, uiohook-napi) are downloaded as prebuilds during
+      # `npm ci`; no compiler toolchain needed on the runner.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --run
+
+      - name: Build
+        run: npm run ${{ matrix.script }}
+        env:
+          # electron-builder uploads to GH releases when GH_TOKEN is set; we
+          # do the upload in a dedicated step below to keep control over
+          # release naming.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts (workflow run)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}-installers
+          path: |
+            dist/*.dmg
+            dist/*.dmg.blockmap
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest*.yml
+          if-no-files-found: ignore
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            dist/*.dmg
+            dist/*.exe
+            dist/latest*.yml
+          body: |
+            ## 9VoiceToText ${{ github.ref_name }}
+
+            ⚠️ **Unsigned build** — first install on macOS / Windows requires
+            a click-through to bypass Gatekeeper / SmartScreen. See
+            [INSTALL-WORKAROUND.md](https://github.com/9expert-training/9voicetotext/blob/main/docs/INSTALL-WORKAROUND.md).
+
+            ### Downloads
+            - **macOS Apple Silicon (M1/M2/M3/M4):** `9VoiceToText-${{ github.ref_name }}-arm64.dmg`
+            - **macOS Intel:** `9VoiceToText-${{ github.ref_name }}-x64.dmg`
+            - **Windows installer:** `9VoiceToText-Setup-${{ github.ref_name }}.exe`
+            - **Windows portable:** `9VoiceToText-Portable-${{ github.ref_name }}.exe`

@@ -1,0 +1,96 @@
+# Sprint 5 Packaging — electron-builder config
+#
+# Ships UNSIGNED for v1.0 (no Apple Developer account, no Windows code-signing
+# cert). Users will hit Gatekeeper / SmartScreen on first install — see
+# docs/INSTALL-WORKAROUND.md for the click-through.
+#
+# Cross-compilation note: macOS DMG must be built on macOS, Windows NSIS must
+# be built on Windows. The .github/workflows/release.yml runs both in parallel
+# on a build matrix and uploads artifacts to the GitHub Release.
+
+appId: com.9expert.voicetotext
+productName: 9VoiceToText
+copyright: "Copyright © 2026 9Expert Training"
+
+directories:
+  output: dist
+  buildResources: resources
+
+# Only ship the compiled output + package.json. node_modules are picked up
+# automatically (production deps only), source files stay out of the bundle.
+files:
+  - out/**
+  - package.json
+  - "!**/*.map" # source maps are dev-only
+
+# asar packs the JS into a single archive for faster startup. Native modules
+# (.node files) and native binaries (keytar, uiohook-napi prebuilds) MUST be
+# unpacked or Electron can't dlopen them.
+asar: true
+asarUnpack:
+  - "**/*.{node,dll}"
+  - "**/keytar/**"
+  - "**/uiohook-napi/**"
+
+# ---- macOS ---------------------------------------------------------------
+mac:
+  category: public.app-category.productivity
+  icon: resources/icons/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  # No code signing for v1.0 — see docs/INSTALL-WORKAROUND.md.
+  identity: null
+  # hardenedRuntime requires signing; skip both.
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  # Microphone + accessibility usage strings shown in macOS permission prompts.
+  extendInfo:
+    NSMicrophoneUsageDescription: "9VoiceToText needs microphone access to transcribe your speech."
+    NSAppleEventsUsageDescription: "9VoiceToText uses System Events to paste transcribed text via Cmd+V."
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+
+dmg:
+  title: "${productName} ${version}"
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+  window:
+    width: 540
+    height: 380
+
+# ---- Windows -------------------------------------------------------------
+win:
+  icon: resources/icons/icon.ico
+  target:
+    - target: nsis
+      arch: x64
+    - target: portable
+      arch: x64
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+  # Don't sign — no cert. Users will see "Unknown publisher" on SmartScreen.
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: "${productName}-Setup-${version}.${ext}"
+  shortcutName: "9VoiceToText"
+  uninstallDisplayName: "9VoiceToText"
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+portable:
+  artifactName: "${productName}-Portable-${version}.${ext}"
+
+# We publish via GitHub Releases manually (or via CI on tag push). Setting
+# `null` here keeps `electron-builder` from trying to push during local builds.
+publish: null

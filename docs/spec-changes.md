@@ -3,6 +3,46 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-05-10 — Sprint 5 Packaging — UNSIGNED installers ship for v1.0
+
+**Spec said:** Section 13.1 calls for code-signed + notarized installers
+(macOS DMG with `notarize: true`, Windows NSIS with EV cert).
+
+**What landed:**
+
+- `electron-builder.yml` configures both platforms:
+  - macOS: DMG for `arm64` + `x64` (Universal-style: two separate DMGs).
+    `identity: null` skips signing; `hardenedRuntime: false` to avoid
+    notarization. Mic + Apple Events usage strings populated in `extendInfo`.
+  - Windows: NSIS installer (`oneClick: false` so the user picks install
+    location) + a portable `.exe` for USB / non-admin use.
+- Native deps (`keytar`, `uiohook-napi`) are correctly `asarUnpack`-ed and
+  fetched as prebuilds during CI install — no native compiler toolchain
+  required on the runner.
+- `.github/workflows/release.yml` runs on tag push (`v*.*.*`): matrix of
+  `macos-latest` + `windows-latest`, runs tests, builds, uploads to a
+  draft GitHub Release with templated download links.
+- Local `npm run build:mac` produces both DMGs in `dist/` (arm64 = 94 MB,
+  x64 = 100 MB) without signing.
+- `docs/INSTALL-WORKAROUND.md` walks first-time users through Gatekeeper
+  bypass (right-click → Open, or `xattr -d com.apple.quarantine`) and
+  Windows SmartScreen click-through (More info → Run anyway).
+- Icons: generated `resources/icons/icon.icns` (via `iconutil`) and
+  `resources/icons/icon.ico` (via Python Pillow) from the existing
+  512×512 PNG.
+
+**Why unsigned:** no Apple Developer account ($99/yr) and no Windows
+EV cert (~$300+/yr) at time of v1.0. The app is pitched at the 9Expert
+internal team + power users who can click-through one warning. Signing
+moves to v1.1 once the certs are in place.
+
+**Consequences:** users see one Gatekeeper / SmartScreen warning per
+machine on first launch. Auto-update (electron-updater) still works
+because the update mechanism is content-hash based, but each new install
+on a fresh machine will trigger the warning until certs are added.
+
+---
+
 ## 2026-05-09 — macOS paste keystroke now uses key code (Thai-layout fix)
 
 **Spec said:** Section 8.4 specifies "simulate Cmd+V via osascript" without
