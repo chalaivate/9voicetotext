@@ -178,19 +178,45 @@ export async function startChunkedRecording(
           return;
         }
 
-        // Skip too-short trailing chunks. Whisper rejects audio < ~100ms;
-        // the user's intent on a quick stop is captured in the previous
-        // chunk anyway.
+        // Skip too-short trailing chunks for Whisper transcription
+        // (Whisper rejects audio < ~100ms). BUT we MUST still deliver
+        // the final-marker IPC so main can finalize the recording;
+        // dropping it silently is the bug that left users with an
+        // unresponsive "recording" state when they pressed stop right
+        // after a rotation boundary (Sprint 4d Phase 4 regression).
         const tooShort = isFinal && durationMs < minChunkDurationMs && myIndex > 0;
+        const hasAudio = !tooShort && chunks.length > 0;
 
-        if (!tooShort && chunks.length > 0) {
+        if (hasAudio) {
           try {
             void new Blob(chunks, { type: mimeType }).arrayBuffer().then((data) => {
               cb.onChunk({ data, mimeType, index: myIndex, isFinal, durationMs });
             });
           } catch (err) {
             cb.onError?.(err as Error);
+            // Even on encoding failure, the final marker still needs
+            // to land so main isn't stuck in "recording".
+            if (isFinal) {
+              cb.onChunk({
+                data: new ArrayBuffer(0),
+                mimeType,
+                index: myIndex,
+                isFinal: true,
+                durationMs
+              });
+            }
           }
+        } else if (isFinal) {
+          // Empty / too-short final chunk: send a marker payload so
+          // the controller's transcriber can fire onFinal and inject
+          // whatever text the previous chunks already accumulated.
+          cb.onChunk({
+            data: new ArrayBuffer(0),
+            mimeType,
+            index: myIndex,
+            isFinal: true,
+            durationMs
+          });
         }
 
         // If this was the final chunk, release the stream and resolve.

@@ -179,6 +179,23 @@ export class ChunkedTranscriber {
       return;
     }
 
+    // Empty-audio marker: the renderer sends this when the trailing
+    // chunk is too short or has no recorded data (e.g., user pressed
+    // stop right after a rotation boundary, < 500ms of audio in the
+    // new recorder). No Whisper call — just finalize so the controller
+    // injects the accumulated text and unsticks the state machine.
+    if (payload.audio.byteLength === 0) {
+      logger.debug('empty-audio chunk marker received', {
+        index: payload.index,
+        isFinal: payload.isFinal
+      });
+      if (payload.isFinal) {
+        this.finalEmitted = true;
+        this.deps.onFinal(this.runningText, this.totalDurationMs);
+      }
+      return;
+    }
+
     this.totalDurationMs += payload.durationMs;
     const vocab = this.deps.getVocabularyPrompt();
     const language = this.deps.getLanguage?.();

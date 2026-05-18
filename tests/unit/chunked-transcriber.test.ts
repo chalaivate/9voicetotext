@@ -307,6 +307,48 @@ describe('ChunkedTranscriber', () => {
     expect(h.transcriber.getRunningText()).toBe('hello world! goodbye');
   });
 
+  it('empty-audio final marker finalizes without calling Whisper', async () => {
+    const h = makeHarness();
+    h.whisper.transcribe.mockResolvedValueOnce(result('first chunk text'));
+
+    await h.transcriber.submit({
+      audio: Buffer.from(audio),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: false,
+      durationMs: 5000
+    });
+
+    // Now an empty-audio marker chunk arrives (renderer sent this
+    // because the trailing chunk was < minChunkDurationMs).
+    await h.transcriber.submit({
+      audio: Buffer.alloc(0),
+      mimeType: 'audio/webm',
+      index: 1,
+      isFinal: true,
+      durationMs: 200
+    });
+
+    // Whisper was called exactly once (for chunk 0), NOT for the marker.
+    expect(h.whisper.transcribe).toHaveBeenCalledTimes(1);
+    // Final fired with the accumulated text from chunk 0.
+    expect(h.onFinal).toHaveBeenCalledWith('first chunk text', 5000);
+  });
+
+  it('empty-audio non-final marker is a no-op (defensive)', async () => {
+    const h = makeHarness();
+    await h.transcriber.submit({
+      audio: Buffer.alloc(0),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: false,
+      durationMs: 200
+    });
+    expect(h.whisper.transcribe).not.toHaveBeenCalled();
+    expect(h.onFinal).not.toHaveBeenCalled();
+    expect(h.transcriber.getRunningText()).toBe('');
+  });
+
   it('startSession resets state for a new recording', async () => {
     const h = makeHarness();
     h.whisper.transcribe.mockResolvedValueOnce(result('first session'));
