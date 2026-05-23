@@ -94,6 +94,12 @@ export interface VoiceToTextApi {
       isFinal: boolean;
       durationMs: number;
     }): void;
+    /**
+     * Sprint 4d Phase 4+ — entire recording was effectively silent
+     * (mic muted / RMS never crossed the floor). Tells main to skip
+     * Whisper and surface "ไม่ได้ยินเสียง — ตรวจสอบไมค์" error.
+     */
+    silentAudio(maxRms: number): void;
   };
   state: {
     onUpdate(cb: (update: StateUpdate) => void): Unsubscribe;
@@ -129,7 +135,8 @@ export const api: VoiceToTextApi = {
     sendAudio: (data, mimeType) => ipcRenderer.send(IPC.recording.audio, { data, mimeType }),
     cancel: () => ipcRenderer.send(IPC.recording.cancel),
     autoStop: () => ipcRenderer.send(IPC.recording.autoStop),
-    sendChunk: (payload) => ipcRenderer.send(IPC.recording.chunk, payload)
+    sendChunk: (payload) => ipcRenderer.send(IPC.recording.chunk, payload),
+    silentAudio: (maxRms) => ipcRenderer.send(IPC.recording.silentAudio, { maxRms })
   },
   state: {
     onUpdate: (cb) => subscribe<StateUpdate>(IPC.state.update, cb)

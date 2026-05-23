@@ -54,6 +54,13 @@ export interface ChunkedRecorderHandle {
   stop(): Promise<void>;
   /** Discard all in-flight chunks and release the stream. */
   cancel(): void;
+  /**
+   * Sprint 4d Phase 4+ — max RMS observed across the WHOLE session
+   * (all chunks). Used by the renderer to detect a silent/muted mic
+   * before sending the final-chunk marker; if the entire recording was
+   * effectively silent we skip Whisper entirely. 0 if no samples seen.
+   */
+  getMaxRms(): number;
 }
 
 export interface ChunkPayload {
@@ -129,6 +136,23 @@ export async function startChunkedRecording(
   let stopRequested = false;
   let cancelled = false;
   let stopResolver: (() => void) | null = null;
+
+  // Sprint 4d Phase 4+ — track peak RMS across the entire session so the
+  // renderer can short-circuit a silent/muted recording before Whisper is
+  // called. Poll at 10 Hz against the shared analyser node — independent
+  // of the recorder rotations.
+  let maxRms = 0;
+  const rmsData = new Uint8Array(analyser.fftSize);
+  const rmsPollHandle = window.setInterval(() => {
+    analyser.getByteTimeDomainData(rmsData);
+    let sumSq = 0;
+    for (let i = 0; i < rmsData.length; i++) {
+      const v = (rmsData[i]! - 128) / 128;
+      sumSq += v * v;
+    }
+    const rms = Math.sqrt(sumSq / rmsData.length);
+    if (rms > maxRms) maxRms = rms;
+  }, 100);
   /**
    * Promise of the last chunk's `onstop` handler. Each restart awaits the
    * previous handler so we never have two recorders running in parallel.
@@ -136,6 +160,7 @@ export async function startChunkedRecording(
   let inFlight: Promise<void> = Promise.resolve();
 
   const releaseStream = (): void => {
+    window.clearInterval(rmsPollHandle);
     stream.getTracks().forEach((t) => t.stop());
     try {
       source.disconnect();
@@ -325,5 +350,5 @@ export async function startChunkedRecording(
   startNewRecorder();
   scheduleNextRotation();
 
-  return { analyser, stop, cancel };
+  return { analyser, stop, cancel, getMaxRms: () => maxRms };
 }

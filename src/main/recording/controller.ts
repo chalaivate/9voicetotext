@@ -136,6 +136,34 @@ export class RecordingController {
   }
 
   /**
+   * Sprint 4d Phase 4+ — renderer detected the recording was effectively
+   * silent (mic muted, or RMS never crossed the floor). Skip Whisper —
+   * which would otherwise hallucinate text built from the vocabulary
+   * prompt — and surface a friendly "check your mic" error. Only acted
+   * on when we're actually mid-recording; stale events are ignored.
+   */
+  silentAudioDetected(maxRms: number): void {
+    if (this.state !== 'recording' && this.state !== 'processing') {
+      logger.debug('silentAudio ignored — not recording', {
+        state: this.state,
+        maxRms
+      });
+      return;
+    }
+    logger.info('silent audio detected, skipping Whisper', { maxRms });
+    // Tear down any streaming session so a late chunk can't trigger an
+    // injection after we've moved to error.
+    this.cancelMaxDurationTimer?.();
+    this.cancelMaxDurationTimer = null;
+    if (this.streamingActive) {
+      this.streamingActive = false;
+      this.chunkedTranscriber = null;
+    }
+    this.buffer.clear();
+    this.transitionToError('ไม่ได้ยินเสียง — ตรวจสอบไมค์ว่าเปิดอยู่และไม่ได้ mute ไว้นะครับ');
+  }
+
+  /**
    * Sprint 4d Phase 2 — fired by the renderer's SilenceDetector when RMS
    * drops below threshold for the configured duration. Same path as a
    * user-initiated stop, but only honored in auto-stop mode + while

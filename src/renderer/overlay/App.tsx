@@ -21,6 +21,17 @@ interface AudioConfig {
   streamingChunkMs: number;
 }
 
+/**
+ * Sprint 4d Phase 4+ — minimum peak RMS for a recording to be considered
+ * non-silent. Tuned well below typical whisper-level speech (~0.01-0.02
+ * RMS) so it only trips on genuinely-muted mics or completely silent
+ * rooms — but high enough above ambient electrical noise (~0.001-0.003)
+ * to avoid false positives. Hardcoded for now; if users dictate in
+ * unusually quiet conditions and hit false positives we can promote
+ * this to a setting.
+ */
+const SILENT_AUDIO_RMS_THRESHOLD = 0.005;
+
 const labels: Record<AppState, string> = {
   idle: 'Ready',
   recording: 'กำลังบันทึก…',
@@ -215,7 +226,16 @@ export default function App(): JSX.Element {
       const chunked = chunkedRef.current;
       chunkedRef.current = null;
       if (chunked) {
+        const chunkedMaxRms = chunked.getMaxRms();
         setAnalyser(null);
+        // Sprint 4d Phase 4+ — short-circuit silent recordings before
+        // any chunk gets to Whisper. Even one loud peak above the floor
+        // means real audio was captured somewhere in the session.
+        if (chunkedMaxRms < SILENT_AUDIO_RMS_THRESHOLD) {
+          chunked.cancel();
+          window.voiceToText.recording.silentAudio(chunkedMaxRms);
+          return;
+        }
         try {
           await chunked.stop();
         } catch (err) {
@@ -231,6 +251,17 @@ export default function App(): JSX.Element {
       handleRef.current = null;
       setAnalyser(null);
       if (!handle) return;
+      const handleMaxRms = handle.getMaxRms();
+      // Sprint 4d Phase 4+ — same silent-audio short-circuit for the
+      // non-streaming path. Whisper hallucinates from the vocabulary
+      // prompt when given silent audio; better to fail fast with a
+      // friendly "check your mic" error than waste the API call AND
+      // potentially paste a hallucinated sentence.
+      if (handleMaxRms < SILENT_AUDIO_RMS_THRESHOLD) {
+        handle.cancel();
+        window.voiceToText.recording.silentAudio(handleMaxRms);
+        return;
+      }
       try {
         const { data, mimeType } = await handle.stop();
         window.voiceToText.recording.sendAudio(data, mimeType);

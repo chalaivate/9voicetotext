@@ -7,7 +7,13 @@ export const IPC = {
     /** Sprint 4d Phase 2 — renderer-detected silence triggers auto-stop. */
     autoStop: 'recording:autoStop',
     /** Sprint 4d Phase 4 — one chunk of audio in streaming mode. */
-    chunk: 'recording:chunk'
+    chunk: 'recording:chunk',
+    /**
+     * Sprint 4d Phase 4+ — renderer detected the entire recording was
+     * effectively silent (mic muted / no audio crossed the floor RMS).
+     * Skip Whisper entirely and surface a friendly error.
+     */
+    silentAudio: 'recording:silentAudio'
   },
   state: {
     update: 'state:update'

@@ -33,6 +33,13 @@ export interface RecordingHandle {
   analyser: AnalyserNode;
   stop(): Promise<{ data: ArrayBuffer; mimeType: string; durationMs: number }>;
   cancel(): void;
+  /**
+   * Sprint 4d Phase 4+ — max RMS observed during this recording. Used by
+   * the renderer to skip sending audio to Whisper when the mic was muted
+   * or the room was effectively silent (Whisper hallucinates from the
+   * vocabulary prompt in that case). 0 if no samples were captured yet.
+   */
+  getMaxRms(): number;
 }
 
 export async function startRecording(cfg: RecorderConfig = {}): Promise<RecordingHandle> {
@@ -69,7 +76,26 @@ export async function startRecording(cfg: RecorderConfig = {}): Promise<Recordin
 
   let resolved = false;
 
+  // Sprint 4d Phase 4+ — track loudest moment of the recording so we can
+  // detect "mic was muted / silent room" before paying for a Whisper call
+  // that will just hallucinate from the vocabulary prompt. Polled at 10 Hz
+  // (matches SilenceDetector's cadence) which is plenty for capturing
+  // peaks of human speech.
+  let maxRms = 0;
+  const rmsData = new Uint8Array(analyser.fftSize);
+  const rmsPollHandle = window.setInterval(() => {
+    analyser.getByteTimeDomainData(rmsData);
+    let sumSq = 0;
+    for (let i = 0; i < rmsData.length; i++) {
+      const v = (rmsData[i]! - 128) / 128;
+      sumSq += v * v;
+    }
+    const rms = Math.sqrt(sumSq / rmsData.length);
+    if (rms > maxRms) maxRms = rms;
+  }, 100);
+
   const releaseStream = (): void => {
+    window.clearInterval(rmsPollHandle);
     stream.getTracks().forEach((t) => t.stop());
     try {
       source.disconnect();
@@ -124,5 +150,5 @@ export async function startRecording(cfg: RecorderConfig = {}): Promise<Recordin
     releaseStream();
   };
 
-  return { analyser, stop, cancel };
+  return { analyser, stop, cancel, getMaxRms: () => maxRms };
 }

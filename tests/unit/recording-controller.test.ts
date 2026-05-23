@@ -386,6 +386,47 @@ describe('RecordingController', () => {
     expect(mocks.injectorInject).not.toHaveBeenCalled();
   });
 
+  // ----- Sprint 4d Phase 4+ — Silent audio short-circuit -----------------
+
+  it('silentAudioDetected: transitions to error with mic message', () => {
+    const { controller, mocks } = makeController();
+    controller.pressed(); // recording
+    controller.silentAudioDetected(0.0021);
+    expect(controller.getState()).toBe('error');
+    const errorCall = mocks.broadcastState.mock.calls.find(([u]) => u.state === 'error');
+    expect(errorCall?.[0].message).toMatch(/ไม่ได้ยินเสียง|mic|microphone/i);
+    // Whisper should NOT have been invoked.
+    expect(mocks.whisperTranscribe).not.toHaveBeenCalled();
+    expect(mocks.injectorInject).not.toHaveBeenCalled();
+  });
+
+  it('silentAudioDetected: ignored when not recording', () => {
+    const { controller, mocks } = makeController();
+    // idle state — silent detection is stale
+    controller.silentAudioDetected(0);
+    expect(controller.getState()).toBe('idle');
+    expect(mocks.broadcastState).not.toHaveBeenCalledWith(
+      expect.objectContaining({ state: 'error' })
+    );
+  });
+
+  it('silentAudioDetected: discards any in-flight streaming session', async () => {
+    const { controller, mocks } = makeController({ streaming: true });
+    controller.pressed(); // streaming recording started
+    controller.silentAudioDetected(0);
+    expect(controller.getState()).toBe('error');
+    // A late chunk arriving after silent-detection should be dropped.
+    await controller.submitChunk({
+      data: new Uint8Array([1]),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: true,
+      durationMs: 200
+    });
+    expect(mocks.whisperTranscribe).not.toHaveBeenCalled();
+    expect(mocks.injectorInject).not.toHaveBeenCalled();
+  });
+
   it('streaming: chunk failure does not abort the session', async () => {
     const { controller, mocks } = makeController({ streaming: true });
     mocks.whisperTranscribe

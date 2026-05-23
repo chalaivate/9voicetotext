@@ -46,6 +46,14 @@ export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcD
     controller.autoStopFromSilence();
   });
 
+  // Sprint 4d Phase 4+ — renderer detected the whole recording was
+  // effectively silent (mic muted, etc). Skip Whisper and surface a
+  // friendly "check your mic" error instead of letting Whisper
+  // hallucinate from the vocabulary prompt.
+  ipcMain.on(IPC.recording.silentAudio, (_event, payload: { maxRms?: number }) => {
+    controller.silentAudioDetected(payload?.maxRms ?? 0);
+  });
+
   // Sprint 4d Phase 4 — one chunk of audio in streaming mode. Controller
   // hands it off to the ChunkedTranscriber which transcribes + accumulates
   // and broadcasts interim updates back to the overlay.
