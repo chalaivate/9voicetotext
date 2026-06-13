@@ -382,7 +382,10 @@ export class RecordingController {
       if (promptText) filterOpts.whisperPrompt = promptText;
       const filtered = filterHallucinations(text, filterOpts);
       if (filtered.filtered) {
-        logger.info('hallucination filtered', { original: text, reason: filtered.reason });
+        // Privacy: do NOT log the transcribed text itself — it can be real
+        // user speech that a filter false-positived, and app.log persists
+        // on disk in plaintext. The reason + length are enough to debug.
+        logger.info('hallucination filtered', { chars: text.length, reason: filtered.reason });
         this.transitionToError(
           'Likely silence detected (Whisper hallucinated boilerplate). Try recording again.'
         );

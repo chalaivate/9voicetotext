@@ -20,7 +20,13 @@ function buildConstraints(cfg: RecorderConfig): MediaStreamConstraints {
     sampleSize: 16,
     echoCancellation: true,
     noiseSuppression: true,
-    autoGainControl: true
+    // autoGainControl OFF on purpose (Sprint 4d Phase 4+). AGC ramps gain
+    // up during silence, which (a) makes a muted/silent mic read as
+    // moderate RMS — defeating the silent-audio short-circuit — and
+    // (b) makes auto-stop's silence detection drift. gpt-4o-transcribe
+    // handles un-normalized levels fine, so we trade level consistency
+    // for a crisp silent-vs-speech RMS separation.
+    autoGainControl: false
   };
   if (cfg.deviceId) {
     audio.deviceId = { exact: cfg.deviceId };

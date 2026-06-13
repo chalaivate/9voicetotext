@@ -23,14 +23,15 @@ interface AudioConfig {
 
 /**
  * Sprint 4d Phase 4+ — minimum peak RMS for a recording to be considered
- * non-silent. Tuned well below typical whisper-level speech (~0.01-0.02
- * RMS) so it only trips on genuinely-muted mics or completely silent
- * rooms — but high enough above ambient electrical noise (~0.001-0.003)
- * to avoid false positives. Hardcoded for now; if users dictate in
- * unusually quiet conditions and hit false positives we can promote
- * this to a setting.
+ * non-silent. With autoGainControl disabled (see media-recorder.ts) the
+ * separation is crisp: a muted / digitally-silent mic reads ~0.0000-0.0005,
+ * a quiet open room ~0.001-0.002, and even soft whisper-level speech sits
+ * at ~0.01+. 0.003 lands above the open-room floor but ~3× below soft
+ * speech, so it blocks muted/no-speech recordings (which would otherwise
+ * make Whisper hallucinate from the vocabulary prompt) without clipping a
+ * real soft talker. Hardcoded for now; promote to a setting if needed.
  */
-const SILENT_AUDIO_RMS_THRESHOLD = 0.005;
+const SILENT_AUDIO_RMS_THRESHOLD = 0.003;
 
 const labels: Record<AppState, string> = {
   idle: 'Ready',
@@ -220,14 +221,28 @@ export default function App(): JSX.Element {
       detectorRef.current = null;
       setSilenceRemainingMs(null);
 
+      const chunked = chunkedRef.current;
+      chunkedRef.current = null;
+      const handle = handleRef.current;
+      handleRef.current = null;
+      setAnalyser(null);
+
+      // Race-guard: if neither handle is set, onStart's `await
+      // getUserMedia` hadn't resolved yet when stop fired. The pending
+      // start will cancel itself via the startToken bump above, but
+      // main is still parked in 'recording' — tell it to cancel so the
+      // state machine unsticks. Without this the user gets a frozen
+      // overlay and "PTT press ignored — pipeline busy" on retries.
+      if (!chunked && !handle) {
+        window.voiceToText.recording.cancel();
+        return;
+      }
+
       // Streaming branch — flush the trailing chunk via stop(); the
       // chunked recorder's onChunk callback emits it with isFinal=true
       // which the controller treats as the "end of recording" trigger.
-      const chunked = chunkedRef.current;
-      chunkedRef.current = null;
       if (chunked) {
         const chunkedMaxRms = chunked.getMaxRms();
-        setAnalyser(null);
         // Sprint 4d Phase 4+ — short-circuit silent recordings before
         // any chunk gets to Whisper. Even one loud peak above the floor
         // means real audio was captured somewhere in the session.
@@ -246,29 +261,27 @@ export default function App(): JSX.Element {
         return;
       }
 
-      // Non-streaming branch — original behavior.
-      const handle = handleRef.current;
-      handleRef.current = null;
-      setAnalyser(null);
-      if (!handle) return;
-      const handleMaxRms = handle.getMaxRms();
-      // Sprint 4d Phase 4+ — same silent-audio short-circuit for the
-      // non-streaming path. Whisper hallucinates from the vocabulary
-      // prompt when given silent audio; better to fail fast with a
-      // friendly "check your mic" error than waste the API call AND
-      // potentially paste a hallucinated sentence.
-      if (handleMaxRms < SILENT_AUDIO_RMS_THRESHOLD) {
-        handle.cancel();
-        window.voiceToText.recording.silentAudio(handleMaxRms);
-        return;
-      }
-      try {
-        const { data, mimeType } = await handle.stop();
-        window.voiceToText.recording.sendAudio(data, mimeType);
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('recorder stop failed', err);
-        window.voiceToText.recording.cancel();
+      // Non-streaming branch.
+      if (handle) {
+        const handleMaxRms = handle.getMaxRms();
+        // Sprint 4d Phase 4+ — same silent-audio short-circuit for the
+        // non-streaming path. Whisper hallucinates from the vocabulary
+        // prompt when given silent audio; better to fail fast with a
+        // friendly "check your mic" error than waste the API call AND
+        // potentially paste a hallucinated sentence.
+        if (handleMaxRms < SILENT_AUDIO_RMS_THRESHOLD) {
+          handle.cancel();
+          window.voiceToText.recording.silentAudio(handleMaxRms);
+          return;
+        }
+        try {
+          const { data, mimeType } = await handle.stop();
+          window.voiceToText.recording.sendAudio(data, mimeType);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error('recorder stop failed', err);
+          window.voiceToText.recording.cancel();
+        }
       }
     });
 

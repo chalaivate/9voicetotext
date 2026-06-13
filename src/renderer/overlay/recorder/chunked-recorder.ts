@@ -92,7 +92,10 @@ function buildConstraints(cfg: ChunkedRecorderConfig): MediaStreamConstraints {
     sampleSize: 16,
     echoCancellation: true,
     noiseSuppression: true,
-    autoGainControl: true
+    // autoGainControl OFF — see media-recorder.ts for the rationale.
+    // Keeps the per-session maxRms a true reflection of input level so
+    // the silent-audio short-circuit can distinguish muted from spoken.
+    autoGainControl: false
   };
   if (cfg.deviceId) {
     audio.deviceId = { exact: cfg.deviceId };
