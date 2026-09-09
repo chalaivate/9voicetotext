@@ -69,7 +69,20 @@ export interface HotkeyCheckResult {
   message?: string;
 }
 
+export interface AppInfo {
+  name: string;
+  version: string;
+  electron: string;
+  chrome: string;
+  node: string;
+  platform: string;
+  arch: string;
+}
+
 export interface VoiceToTextApi {
+  app: {
+    info(): Promise<AppInfo>;
+  };
   recording: {
     onStart(cb: () => void): Unsubscribe;
     onStop(cb: () => void): Unsubscribe;
@@ -129,6 +142,9 @@ export interface VoiceToTextApi {
 }
 
 export const api: VoiceToTextApi = {
+  app: {
+    info: () => ipcRenderer.invoke(IPC.app.info)
+  },
   recording: {
     onStart: (cb) => subscribe<void>(IPC.recording.start, () => cb()),
     onStop: (cb) => subscribe<void>(IPC.recording.stop, () => cb()),

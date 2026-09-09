@@ -1,7 +1,7 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { app, ipcMain, BrowserWindow } from 'electron';
 import { fetch } from 'undici';
 import { IPC } from '@shared/ipc-channels';
-import { TRANSCRIPTION, composeWhisperPrompt } from '@shared/constants';
+import { APP_NAME, TRANSCRIPTION, composeWhisperPrompt } from '@shared/constants';
 import { logger } from '@main/utils/logger';
 import type { RecordingController } from '@main/recording/controller';
 import type { HotkeyManager } from '@main/hotkey/manager';
@@ -85,6 +85,19 @@ export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcD
       }
     }
   );
+
+  // ---- App info (About page, diagnostics) --------------------------------
+  // The sandboxed renderer has no `process`, so version/runtime facts must
+  // come from main.
+  ipcMain.handle(IPC.app.info, async () => ({
+    name: APP_NAME,
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: process.platform,
+    arch: process.arch
+  }));
 
   // ---- Settings ----------------------------------------------------------
   ipcMain.handle(IPC.settings.get, async () => getSettings());

@@ -40,7 +40,14 @@ npm run typecheck    # tsc --noEmit on main + renderer
 npm run lint         # eslint
 npm run format       # prettier --write
 npm test             # vitest run
+npm run icons        # regenerate app + tray icons from resources/icons/icon.svg
 ```
+
+The app icon is a single SVG (`resources/icons/icon.svg`). `npm run icons`
+renders it with Playwright's bundled Chromium into `icon.png`, `icon.ico`,
+`icon.icns` and the tray glyphs — no ImageMagick required. If Playwright's
+browser is not downloaded, point the script at any Chromium binary with
+`ICON_CHROMIUM_PATH=/path/to/chrome npm run icons`.
 
 When `npm run dev` is running:
 

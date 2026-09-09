@@ -136,8 +136,8 @@ const DEFAULT_PROMPT_FALLBACK = [
 export const CODING_PROMPT = DEFAULT_PROMPT_FALLBACK;
 
 export const OVERLAY = {
-  width: 280,
-  height: 80,
+  width: 340,
+  height: 96,
   /** Offset from screen edge, px. */
   edgeOffset: 20,
   /** Auto-hide delays after a terminal state. */

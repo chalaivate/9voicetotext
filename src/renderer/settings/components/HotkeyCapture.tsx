@@ -158,7 +158,7 @@ export function HotkeyCapture({ value, onChange }: Props): JSX.Element {
         <div style={display}>
           <span style={accelLabel}>{formatAccelerator(status.combo)}</span>
           {status.kind === 'pending' && <Pill color={tokens.color.success}>Available</Pill>}
-          {status.kind === 'checking' && <Pill color={tokens.color.brandBlueLight}>Checking…</Pill>}
+          {status.kind === 'checking' && <Pill color={tokens.color.link}>Checking…</Pill>}
           {status.kind === 'conflict' && <Pill color={tokens.color.error}>Conflict</Pill>}
         </div>
       )}
@@ -255,8 +255,8 @@ const accelLabel: CSSProperties = {
 
 const captureBox: CSSProperties = {
   fontSize: 12,
-  color: tokens.color.brandBlueLight,
-  border: `1px dashed ${tokens.color.brandBlueLight}`,
+  color: tokens.color.link,
+  border: `1px dashed ${tokens.color.link}`,
   borderRadius: tokens.radius.md,
   padding: '12px 14px',
   outline: 'none',

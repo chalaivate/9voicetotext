@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppState, HotkeyMode, StateUpdate } from '../../shared/types';
 import { startRecording, type RecordingHandle } from './recorder/media-recorder';
 import { startChunkedRecording, type ChunkedRecorderHandle } from './recorder/chunked-recorder';
@@ -34,22 +34,23 @@ interface AudioConfig {
 const SILENT_AUDIO_RMS_THRESHOLD = 0.003;
 
 const labels: Record<AppState, string> = {
-  idle: 'Ready',
-  recording: 'กำลังบันทึก…',
-  processing: 'กำลังแปลง…',
-  injecting: 'กำลังวาง…',
+  idle: 'พร้อมใช้งาน',
+  recording: 'กำลังฟัง…',
+  processing: 'กำลังถอดเสียง…',
+  injecting: 'กำลังวางข้อความ…',
   success: 'เสร็จแล้ว',
   error: 'เกิดข้อผิดพลาด'
 };
 
-const backgrounds: Record<AppState, string> = {
-  idle: 'rgba(13, 27, 42, 0.85)',
-  recording: 'rgba(255, 59, 48, 0.92)',
-  processing: 'rgba(36, 134, 255, 0.92)',
-  injecting: 'rgba(36, 134, 255, 0.92)',
-  success: 'rgba(52, 199, 89, 0.92)',
-  error: 'rgba(255, 149, 0, 0.95)'
+/** Hints shown under the title while nothing more specific is available. */
+const hints: Partial<Record<AppState, string>> = {
+  idle: 'กดปุ่มลัดเพื่อเริ่มพูด',
+  processing: 'AI กำลังแปลงเสียงเป็นข้อความ',
+  injecting: 'วางที่ตำแหน่งเคอร์เซอร์'
 };
+
+/** Max recording length — drives the thin progress line under the card. */
+const MAX_RECORDING_SEC = 5 * 60;
 
 export default function App(): JSX.Element {
   const [state, setState] = useState<AppState>('idle');
@@ -332,60 +333,12 @@ export default function App(): JSX.Element {
     return () => window.clearInterval(id);
   }, [state]);
 
-  const containerStyle: CSSProperties = {
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-    color: '#F8FAFD',
-    background: backgrounds[state],
-    borderRadius: 14,
-    padding: '12px 16px',
-    margin: 8,
-    height: 'calc(100% - 16px)',
-    boxSizing: 'border-box',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    fontSize: 13,
-    lineHeight: 1.3,
-    boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-    backdropFilter: 'blur(12px)'
-  };
-
-  const titleRow: CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    fontWeight: 600
-  };
-
-  const subtleRow: CSSProperties = {
-    fontSize: 11,
-    opacity: 0.85,
-    marginTop: 2,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  };
-
-  // Sprint 4d Phase 4 — interim text. Italic + slightly faded to signal
-  // "in progress". Multi-line OK but capped at 2 lines so the overlay
-  // height stays predictable; we show the tail end of the text (latest
-  // chunks) by slicing in JS rather than fighting CSS bidi.
-  const interimRow: CSSProperties = {
-    fontSize: 11,
-    opacity: 0.75,
-    fontStyle: 'italic',
-    marginTop: 2,
-    maxHeight: 32,
-    overflow: 'hidden',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    whiteSpace: 'normal',
-    wordBreak: 'break-word'
-  };
-
-  const stateText =
-    state === 'recording' ? `${labels[state]} ${formatTime(elapsedSec)}` : labels[state];
+  // Remount the card each time the overlay comes back from idle so the
+  // slide-in animation replays on every recording, not just the first.
+  const [showKey, setShowKey] = useState(0);
+  useEffect(() => {
+    if (state === 'recording') setShowKey((k) => k + 1);
+  }, [state]);
 
   // Sprint 4d Phase 2 — show "auto-stop in Xs" countdown when silence has
   // been detected, only in auto-stop mode and during recording.
@@ -393,49 +346,93 @@ export default function App(): JSX.Element {
     state === 'recording' &&
     configRef.current.hotkeyMode === 'auto-stop' &&
     silenceRemainingMs !== null
-      ? `auto-stop ใน ${Math.ceil(silenceRemainingMs / 1000)}s`
+      ? `เงียบ… จะหยุดอัตโนมัติใน ${Math.ceil(silenceRemainingMs / 1000)}s`
       : null;
 
   // Sprint 4d Phase 4 — interim streaming text takes priority over the
   // auto-stop countdown when both could show. The countdown is implied
   // by the silence anyway (no new text arriving).
+  const isInterim = state === 'recording' && !!interimText;
   const subText =
     state === 'success'
       ? text
       : state === 'error'
         ? message || 'Unknown error'
-        : state === 'recording' && interimText
-          ? interimText
-          : (autoStopHint ?? '');
+        : isInterim
+          ? tailOfText(interimText, 180)
+          : (autoStopHint ?? recordingHint(state, configRef.current.hotkeyMode));
 
-  const isInterim = state === 'recording' && !!interimText;
+  const subClass = [
+    'ov-sub',
+    isInterim ? 'ov-sub--interim' : '',
+    state === 'success' ? 'ov-sub--success' : '',
+    state === 'error' ? 'ov-sub--error' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const showWave = state === 'recording' && !!analyser && configRef.current.showWaveform;
+  const busy = state === 'processing' || state === 'injecting';
 
   return (
-    <>
-      <style>{`
-        @keyframes pulse {
-          0%   { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0.45); }
-          70%  { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
-          100% { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0); }
-        }
-        body, html, #root { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden; }
-      `}</style>
-      <div style={containerStyle}>
-        <StatusBadge state={state} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={titleRow}>{stateText}</div>
-          {subText && (
-            <div style={isInterim ? interimRow : subtleRow}>
-              {isInterim ? tailOfText(subText, 180) : subText}
+    <div className="ov-root" data-state={state}>
+      <div className="ov-card" key={showKey}>
+        <div className="ov-inner">
+          <StatusBadge state={state} />
+          <div className="ov-text">
+            <div className="ov-title-row">
+              <span className="ov-title">{labels[state]}</span>
+              {state === 'recording' && (
+                <span className="ov-pill">
+                  <span className="ov-dot" />
+                  {formatTime(elapsedSec)}
+                </span>
+              )}
+              {state !== 'recording' && (
+                <span className="ov-brand">
+                  <b>9</b>VoiceToText
+                </span>
+              )}
+            </div>
+            {subText && (
+              <div className={subClass} title={subText}>
+                {subText}
+              </div>
+            )}
+          </div>
+          {showWave && <Waveform analyser={analyser} width={72} height={40} bars={9} />}
+
+          {state === 'recording' && (
+            <div className="ov-bar" aria-hidden="true">
+              <div
+                className="ov-bar__fill"
+                style={{ width: `${Math.min(100, (elapsedSec / MAX_RECORDING_SEC) * 100)}%` }}
+              />
+            </div>
+          )}
+          {busy && (
+            <div className="ov-bar" aria-hidden="true">
+              <div className="ov-bar__shimmer" />
             </div>
           )}
         </div>
-        {state === 'recording' && analyser && configRef.current.showWaveform && (
-          <Waveform analyser={analyser} width={96} height={36} />
-        )}
       </div>
-    </>
+    </div>
   );
+}
+
+/** One-line hint while recording, tailored to the hotkey mode. */
+function recordingHint(state: AppState, mode: HotkeyMode): string {
+  if (state !== 'recording') return hints[state] ?? '';
+  switch (mode) {
+    case 'push-to-talk':
+      return 'ปล่อยปุ่มเพื่อส่ง';
+    case 'auto-stop':
+      return 'พูดได้เลย หยุดพูดแล้วจะส่งให้อัตโนมัติ';
+    case 'toggle':
+    default:
+      return 'พูดได้เลย กดปุ่มลัดอีกครั้งเพื่อส่ง';
+  }
 }
 
 function formatTime(sec: number): string {

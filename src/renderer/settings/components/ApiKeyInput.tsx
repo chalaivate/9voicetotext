@@ -135,7 +135,7 @@ export function ApiKeyInput(): JSX.Element {
           href="https://platform.openai.com/api-keys"
           target="_blank"
           rel="noopener noreferrer"
-          style={{ color: tokens.color.brandBlueLight }}
+          style={{ color: tokens.color.link }}
         >
           platform.openai.com/api-keys
         </a>

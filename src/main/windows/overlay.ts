@@ -1,12 +1,20 @@
 import { join } from 'node:path';
 import { BrowserWindow, screen } from 'electron';
 import { OVERLAY } from '@shared/constants';
+import { computeOverlayPosition, type OverlayPosition } from '@shared/overlay-position';
 import { logger } from '@main/utils/logger';
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL'];
 
+export interface OverlayWindowDeps {
+  /** Which screen corner the user picked in Settings → General. */
+  getPosition?: () => OverlayPosition;
+}
+
 export class OverlayWindow {
   private window: BrowserWindow | null = null;
+
+  constructor(private readonly deps: OverlayWindowDeps = {}) {}
 
   ensure(): BrowserWindow {
     if (this.window && !this.window.isDestroyed()) return this.window;
@@ -53,7 +61,7 @@ export class OverlayWindow {
 
   show(): void {
     const win = this.ensure();
-    this.positionAtTopRight(win);
+    this.positionAtCorner(win);
     win.showInactive();
   }
 
@@ -80,14 +88,22 @@ export class OverlayWindow {
     this.window.webContents.send(channel, ...args);
   }
 
-  private positionAtTopRight(win: BrowserWindow): void {
+  /**
+   * Place the overlay in the configured corner of whichever display the
+   * mouse cursor is on (multi-monitor: follow the user, not the primary).
+   */
+  private positionAtCorner(win: BrowserWindow): void {
     try {
       const cursor = screen.getCursorScreenPoint();
       const display = screen.getDisplayNearestPoint(cursor);
-      const { x, y, width } = display.workArea;
-      const winX = x + width - OVERLAY.width - OVERLAY.edgeOffset;
-      const winY = y + OVERLAY.edgeOffset;
-      win.setPosition(Math.round(winX), Math.round(winY), false);
+      const position = this.deps.getPosition?.() ?? 'top-right';
+      const { x, y } = computeOverlayPosition(
+        display.workArea,
+        position,
+        { width: OVERLAY.width, height: OVERLAY.height },
+        OVERLAY.edgeOffset
+      );
+      win.setPosition(x, y, false);
     } catch (err) {
       logger.warn('overlay positioning failed', { err: (err as Error).message });
     }

@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { BrowserWindow, app } from 'electron';
+import { BrowserWindow, app, nativeTheme } from 'electron';
 import { APP_NAME } from '@shared/constants';
 import { isMac } from '@main/utils/platform';
 import { logger } from '@main/utils/logger';
@@ -29,7 +29,10 @@ export class SettingsWindow {
       // Windows 11 mica; ignored elsewhere.
       ...(process.platform === 'win32' ? { backgroundMaterial: 'mica' as const } : {}),
       show: false,
-      backgroundColor: '#1a1d23',
+      // Match the renderer palette so there is no flash before first paint.
+      backgroundColor: nativeTheme.shouldUseDarkColors ? '#13171F' : '#F3F5F9',
+      // Dock / taskbar icon in dev (packaged builds embed it in the binary).
+      icon: join(__dirname, '../../resources/icons/icon.png'),
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,

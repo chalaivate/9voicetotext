@@ -1,21 +1,36 @@
+import { useEffect, useState } from 'react';
 import { Card } from '../../shared/components/Card';
 import { Button } from '../../shared/components/Button';
+import { Logo } from '../../shared/components/Logo';
 import { tokens } from '../../shared/tokens';
 import { useSettings } from '../../shared/use-settings';
 import { toast } from '../../shared/components/Toast';
+import type { AppInfo } from '../../../preload/api';
 
 export function AboutPage(): JSX.Element {
   const reset = useSettings((s) => s.reset);
+  const [info, setInfo] = useState<AppInfo | null>(null);
+
+  useEffect(() => {
+    void window.voiceToText.app.info().then(setInfo);
+  }, []);
+
+  const diagnostic = info
+    ? `${info.name} ${info.version}\nElectron ${info.electron} · Chrome ${info.chrome} · Node ${info.node}\nPlatform ${info.platform} ${info.arch}`
+    : '';
 
   return (
     <>
       <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>About</h1>
 
       <Card title="9VoiceToText">
-        <div style={{ fontSize: 13, color: tokens.color.text, lineHeight: 1.6 }}>
-          Cross-platform voice-to-text desktop app powered by OpenAI Whisper.
-          <br />
-          Speak naturally. Type instantly. Anywhere.
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+          <Logo size={56} />
+          <div style={{ fontSize: 13, color: tokens.color.text, lineHeight: 1.6 }}>
+            Cross-platform voice-to-text desktop app powered by OpenAI Whisper.
+            <br />
+            Speak naturally. Type instantly. Anywhere.
+          </div>
         </div>
         <div
           style={{
@@ -28,7 +43,11 @@ export function AboutPage(): JSX.Element {
           }}
         >
           <span>Version</span>
-          <span>0.1.0 (Sprint 4a)</span>
+          <span style={{ fontFamily: tokens.font.mono }}>{info?.version ?? '…'}</span>
+          <span>Runtime</span>
+          <span style={{ fontFamily: tokens.font.mono }}>
+            {info ? `Electron ${info.electron} · ${info.platform} ${info.arch}` : '…'}
+          </span>
           <span>Author</span>
           <span>9Expert Training</span>
           <span>Privacy</span>
@@ -67,7 +86,7 @@ export function AboutPage(): JSX.Element {
               href="https://openai.com/policies/api-data-usage-policies"
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: tokens.color.brandBlueLight }}
+              style={{ color: tokens.color.link }}
             >
               API data usage policy
             </a>{' '}
@@ -86,10 +105,11 @@ export function AboutPage(): JSX.Element {
         }}
       >
         <button
+          disabled={!info}
           onClick={() => {
-            toast('Copied diagnostic info', 'info');
-            void navigator.clipboard.writeText(
-              `9VoiceToText 0.1.0\nElectron ${process.versions?.electron ?? '?'}\nPlatform ${process.platform ?? '?'}`
+            void navigator.clipboard.writeText(diagnostic).then(
+              () => toast('Copied diagnostic info', 'info'),
+              () => toast('Clipboard unavailable', 'error')
             );
           }}
           style={{

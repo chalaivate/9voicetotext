@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, nativeTheme } from 'electron';
 import { APP_ID, APP_NAME, composeWhisperPrompt } from '@shared/constants';
 import { IPC } from '@shared/ipc-channels';
 import { logger } from '@main/utils/logger';
@@ -27,7 +27,9 @@ if (isMac) {
 if (ensureSingleInstance()) {
   const tray = new TrayManager();
   const hotkey = new HotkeyManager();
-  const overlay = new OverlayWindow();
+  const overlay = new OverlayWindow({
+    getPosition: () => getSettings().ui.overlayPosition
+  });
   const settingsWindow = new SettingsWindow();
   // Whisper getter: keytar first, .env.local fallback (dev convenience).
   const whisper = createWhisperClient({
@@ -105,9 +107,13 @@ if (ensureSingleInstance()) {
     }
 
     tray.init({
-      openSettings: () => settingsWindow.open()
+      openSettings: () => settingsWindow.open(),
+      getHotkey: () => getSettings().hotkey.combo
       // openHistory: provided in Sprint 4c
     });
+    // Native theme (window chrome, vibrancy/mica, dialogs) follows the
+    // Settings → General → Theme preference.
+    nativeTheme.themeSource = settings.ui.theme;
     overlay.ensure();
     registerIpcHandlers({ controller, settingsWindow, hotkey });
 
@@ -125,11 +131,13 @@ if (ensureSingleInstance()) {
     let lastCombo = settings.hotkey.combo;
     let lastMode = settings.hotkey.mode;
     onSettingsChange((s) => {
+      if (nativeTheme.themeSource !== s.ui.theme) nativeTheme.themeSource = s.ui.theme;
       if (s.hotkey.combo !== lastCombo || s.hotkey.mode !== lastMode) {
         try {
           hotkey.register(s.hotkey.combo, s.hotkey.mode);
           lastCombo = s.hotkey.combo;
           lastMode = s.hotkey.mode;
+          tray.refresh();
         } catch (err) {
           logger.error('hotkey re-register failed after settings change', {
             combo: s.hotkey.combo,

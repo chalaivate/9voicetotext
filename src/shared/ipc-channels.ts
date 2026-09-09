@@ -39,6 +39,10 @@ export const IPC = {
     /** Compose preview of the prompt that will be sent to Whisper. */
     preview: 'vocabulary:preview'
   },
+  app: {
+    /** Version / runtime info for About + diagnostics. */
+    info: 'app:info'
+  },
   windows: {
     openSettings: 'windows:openSettings',
     openHistory: 'windows:openHistory',

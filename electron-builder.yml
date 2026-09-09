@@ -32,6 +32,16 @@ asarUnpack:
   - "**/keytar/**"
   - "**/uiohook-napi/**"
 
+# Runtime assets loaded by path from the main process (tray icons). Without
+# this the packaged app has NO tray icon — `files` only ships out/**.
+# Lands at <app>/resources/icons; see src/main/tray/icons.ts.
+extraResources:
+  - from: resources/icons
+    to: icons
+    filter:
+      - "tray-*.png"
+      - "icon.png"
+
 # ---- macOS ---------------------------------------------------------------
 mac:
   category: public.app-category.productivity
