@@ -3,6 +3,32 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-09-09 — v0.2.0 — App icon, overlay redesign, theme support
+
+**Spec said:** §11.4 lists the design tokens; the overlay and settings UI
+were implemented as a functional placeholder with a flat coloured pill.
+
+**What landed:**
+
+- **App icon** redesigned (mic + lime sound bars on a Brand Blue gradient).
+  Generated from SVG by `resources/design/gen-icons.mjs` into `.icns`,
+  `.ico`, `.png` and platform-specific tray sets (`@2x`, `-light` for
+  Windows, coloured status dots for recording/processing).
+- **Overlay** rebuilt as a glass card (360×96) with an animated status orb,
+  Thai headline + English chip, mode badge (LIVE / AUTO / PTT), 14-bar
+  gradient frequency visualiser and a processing shimmer bar. Styles live
+  in `src/renderer/overlay/styles.ts`.
+- **Settings** gets a proper sidebar (logo, lucide icons, version footer), a
+  working Light / Dark / System theme via CSS custom properties in
+  `src/renderer/shared/tokens.ts`, and a new About page (real version via
+  the `app:info` IPC, "Built with" toolchain card).
+- **Fixes:** `ui.overlayPosition`, `ui.theme`, `ui.soundVolume` and
+  `app.launchOnStartup` are now honoured; tray menu shows the configured
+  hotkey; tray icons are copied into packaged builds via `extraResources`.
+
+See `docs/ux-review-2026-09.md` for the full review and the remaining
+recommendations.
+
 ## 2026-05-10 — Sprint 4d Phase 4 — Live chunked streaming transcription
 
 **Spec said:** Section 9 sketches a "streaming via Whisper SSE" idea but

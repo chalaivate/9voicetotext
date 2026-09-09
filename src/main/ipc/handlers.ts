@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { app, ipcMain, BrowserWindow } from 'electron';
 import { fetch } from 'undici';
 import { IPC } from '@shared/ipc-channels';
 import { TRANSCRIPTION, composeWhisperPrompt } from '@shared/constants';
@@ -172,6 +172,16 @@ export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcD
       s.transcription.customVocabulary
     );
   });
+
+  // ---- App info (About page) ---------------------------------------------
+  ipcMain.handle(IPC.app.info, async () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron ?? '?',
+    chrome: process.versions.chrome ?? '?',
+    node: process.versions.node ?? '?',
+    platform: process.platform,
+    arch: process.arch
+  }));
 
   // ---- Window open requests from renderer --------------------------------
   ipcMain.on(IPC.windows.openSettings, () => {

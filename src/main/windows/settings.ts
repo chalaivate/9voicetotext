@@ -1,8 +1,9 @@
 import { join } from 'node:path';
-import { BrowserWindow, app } from 'electron';
+import { BrowserWindow, app, nativeTheme } from 'electron';
 import { APP_NAME } from '@shared/constants';
 import { isMac } from '@main/utils/platform';
 import { logger } from '@main/utils/logger';
+import { getSettings } from '@main/store/settings';
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL'];
 
@@ -16,11 +17,15 @@ export class SettingsWindow {
       return this.window;
     }
 
+    const theme = getSettings().ui.theme;
+    const prefersLight =
+      theme === 'light' || (theme === 'system' && !nativeTheme.shouldUseDarkColors);
+
     const win = new BrowserWindow({
-      width: 800,
-      height: 600,
-      minWidth: 720,
-      minHeight: 540,
+      width: 860,
+      height: 640,
+      minWidth: 760,
+      minHeight: 560,
       title: `${APP_NAME} Settings`,
       // macOS native traffic lights, hidden inset.
       titleBarStyle: isMac ? 'hiddenInset' : 'default',
@@ -29,7 +34,7 @@ export class SettingsWindow {
       // Windows 11 mica; ignored elsewhere.
       ...(process.platform === 'win32' ? { backgroundMaterial: 'mica' as const } : {}),
       show: false,
-      backgroundColor: '#1a1d23',
+      backgroundColor: prefersLight ? '#F4F6FA' : '#13171F',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,

@@ -6,7 +6,9 @@ Built on Electron + TypeScript + React + Tailwind, powered by OpenAI Whisper.
 Hold a global hotkey, speak Thai/English/mixed, release — the transcribed text
 is pasted at your cursor in any app (VS Code, Claude Code, Word, Slack, etc.).
 
-> **Status:** Sprint 4d Phase 2 + Sprint 5 Packaging complete (May 2026).
+> **Status:** v0.2.0 (September 2026) — new app icon, redesigned overlay and
+> settings UI with Light/Dark theme. See [`docs/ux-review-2026-09.md`](docs/ux-review-2026-09.md).
+> Sprint 4d Phase 2 + Sprint 5 Packaging complete (May 2026).
 > Daily-driver-ready with **3 hotkey modes** (toggle, push-to-talk, **auto-stop on
 > silence**), **gpt-4o-transcribe** as default model, hallucination filter,
 > custom vocabulary, clipboard-only output mode for paste-blocking apps, and
@@ -46,13 +48,21 @@ When `npm run dev` is running:
 
 - A tray/menu-bar icon appears (microphone glyph).
 - Press **Ctrl+Cmd+Space** (macOS) or **Ctrl+Alt+Space** (Windows) — start beep,
-  recording overlay appears top-right with a live waveform.
+  the recording overlay slides in (corner chosen in Settings → General) with a
+  live waveform: "กำลังฟัง · LISTENING".
 - Speak.
-- Press the hotkey again — stop beep, overlay turns blue (processing).
+- Press the hotkey again — stop beep, overlay switches to "กำลังถอดเสียง ·
+  TRANSCRIBING" with a spinner.
 - Within ~2s the transcribed text is pasted at your cursor in whatever app
-  has focus. Overlay flashes green for 1s and auto-hides.
+  has focus. Overlay shows "เสร็จเรียบร้อย · DONE" with the text for 1s and
+  auto-hides.
 - On error (no API key, network, paste blocked) the overlay turns orange with
   a Thai/English explanation and auto-hides after 5s.
+
+| Listening                                        | Transcribing                                 | Done                                      |
+| ------------------------------------------------ | -------------------------------------------- | ----------------------------------------- |
+| ![](docs/screenshots/overlay-recording-live.png) | ![](docs/screenshots/overlay-processing.png) | ![](docs/screenshots/overlay-success.png) |
+
 - Right-click the tray → **Quit 9VoiceToText** to exit.
 
 **macOS first-run:** the first paste will trigger a permission prompt:

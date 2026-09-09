@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import { BrowserWindow, screen } from 'electron';
 import { OVERLAY } from '@shared/constants';
 import { logger } from '@main/utils/logger';
+import { getSettings } from '@main/store/settings';
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL'];
 
@@ -53,7 +54,7 @@ export class OverlayWindow {
 
   show(): void {
     const win = this.ensure();
-    this.positionAtTopRight(win);
+    this.positionForSettings(win);
     win.showInactive();
   }
 
@@ -80,13 +81,22 @@ export class OverlayWindow {
     this.window.webContents.send(channel, ...args);
   }
 
-  private positionAtTopRight(win: BrowserWindow): void {
+  /**
+   * Place the overlay in the corner chosen in Settings → General → Overlay
+   * position, on whichever display currently holds the cursor.
+   */
+  private positionForSettings(win: BrowserWindow): void {
     try {
+      const position = getSettings().ui.overlayPosition;
       const cursor = screen.getCursorScreenPoint();
       const display = screen.getDisplayNearestPoint(cursor);
-      const { x, y, width } = display.workArea;
-      const winX = x + width - OVERLAY.width - OVERLAY.edgeOffset;
-      const winY = y + OVERLAY.edgeOffset;
+      const { x, y, width, height } = display.workArea;
+      const right = position === 'top-right' || position === 'bottom-right';
+      const bottom = position === 'bottom-left' || position === 'bottom-right';
+      const winX = right ? x + width - OVERLAY.width - OVERLAY.edgeOffset : x + OVERLAY.edgeOffset;
+      const winY = bottom
+        ? y + height - OVERLAY.height - OVERLAY.edgeOffset
+        : y + OVERLAY.edgeOffset;
       win.setPosition(Math.round(winX), Math.round(winY), false);
     } catch (err) {
       logger.warn('overlay positioning failed', { err: (err as Error).message });

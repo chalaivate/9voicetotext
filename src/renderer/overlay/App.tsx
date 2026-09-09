@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppState, HotkeyMode, StateUpdate } from '../../shared/types';
 import { startRecording, type RecordingHandle } from './recorder/media-recorder';
 import { startChunkedRecording, type ChunkedRecorderHandle } from './recorder/chunked-recorder';
 import { SilenceDetector, rmsFromAnalyser } from './recorder/silence-detector';
-import { StatusBadge } from './components/StatusBadge';
+import { StatusOrb } from './components/StatusOrb';
 import { Waveform } from './components/Waveform';
+import { overlayStyles } from './styles';
 import { errorBeep, startBeep, stopBeep } from './sounds/beeps';
 
 interface AudioConfig {
@@ -12,6 +13,8 @@ interface AudioConfig {
   sampleRate: 16000 | 24000 | 48000;
   showWaveform: boolean;
   soundEnabled: boolean;
+  /** 0..1 — mirrors settings.ui.soundVolume (0..100). */
+  soundVolume: number;
   /** Sprint 4d Phase 2 — auto-stop VAD config. Read each recording. */
   hotkeyMode: HotkeyMode;
   silenceThresholdRms: number;
@@ -33,22 +36,34 @@ interface AudioConfig {
  */
 const SILENT_AUDIO_RMS_THRESHOLD = 0.003;
 
+/** Thai headline per state — the big line the user reads at a glance. */
 const labels: Record<AppState, string> = {
-  idle: 'Ready',
-  recording: 'กำลังบันทึก…',
-  processing: 'กำลังแปลง…',
-  injecting: 'กำลังวาง…',
-  success: 'เสร็จแล้ว',
+  idle: 'พร้อมใช้งาน',
+  recording: 'กำลังฟัง',
+  processing: 'กำลังถอดเสียง',
+  injecting: 'กำลังวางข้อความ',
+  success: 'เสร็จเรียบร้อย',
   error: 'เกิดข้อผิดพลาด'
 };
 
-const backgrounds: Record<AppState, string> = {
-  idle: 'rgba(13, 27, 42, 0.85)',
-  recording: 'rgba(255, 59, 48, 0.92)',
-  processing: 'rgba(36, 134, 255, 0.92)',
-  injecting: 'rgba(36, 134, 255, 0.92)',
-  success: 'rgba(52, 199, 89, 0.92)',
-  error: 'rgba(255, 149, 0, 0.95)'
+/** English micro-caption shown in the state chip next to the headline. */
+const captions: Record<AppState, string> = {
+  idle: 'READY',
+  recording: 'LISTENING',
+  processing: 'TRANSCRIBING',
+  injecting: 'PASTING',
+  success: 'DONE',
+  error: 'ERROR'
+};
+
+/** Secondary hint per state (used when there is no richer text to show). */
+const hints: Record<AppState, string> = {
+  idle: 'กด hotkey เพื่อเริ่มพูด',
+  recording: 'พูดได้เลย · กด hotkey อีกครั้งเพื่อหยุด',
+  processing: 'AI กำลังแปลงเสียงเป็นข้อความ…',
+  injecting: 'กำลังส่งข้อความไปยังเคอร์เซอร์…',
+  success: '',
+  error: ''
 };
 
 export default function App(): JSX.Element {
@@ -61,6 +76,8 @@ export default function App(): JSX.Element {
   const [silenceRemainingMs, setSilenceRemainingMs] = useState<number | null>(null);
   /** Sprint 4d Phase 4 — running text from streaming mode, shown live during recording. */
   const [interimText, setInterimText] = useState<string>('');
+  /** Mode badge (LIVE / AUTO / PTT) mirrored from settings so it can render. */
+  const [modeBadge, setModeBadge] = useState<string>('');
   const handleRef = useRef<RecordingHandle | null>(null);
   /** Sprint 4d Phase 4 — chunked recorder used when settings.transcription.streaming === true. */
   const chunkedRef = useRef<ChunkedRecorderHandle | null>(null);
@@ -79,6 +96,7 @@ export default function App(): JSX.Element {
     sampleRate: 16000,
     showWaveform: true,
     soundEnabled: true,
+    soundVolume: 0.3,
     hotkeyMode: 'toggle',
     silenceThresholdRms: 0.015,
     silenceDurationMs: 10_000,
@@ -92,11 +110,13 @@ export default function App(): JSX.Element {
     let cancelled = false;
     void window.voiceToText.settings.get().then((s) => {
       if (cancelled) return;
+      setModeBadge(badgeFor(s.hotkey.mode, s.transcription.streaming));
       configRef.current = {
         deviceId: s.audio.inputDeviceId,
         sampleRate: s.audio.sampleRate,
         showWaveform: s.ui.showWaveform,
         soundEnabled: s.ui.soundEnabled,
+        soundVolume: s.ui.soundVolume / 100,
         hotkeyMode: s.hotkey.mode,
         silenceThresholdRms: s.audio.silenceThresholdRms,
         silenceDurationMs: s.audio.silenceDurationMs,
@@ -105,11 +125,13 @@ export default function App(): JSX.Element {
       };
     });
     const off = window.voiceToText.settings.onChange((s) => {
+      setModeBadge(badgeFor(s.hotkey.mode, s.transcription.streaming));
       configRef.current = {
         deviceId: s.audio.inputDeviceId,
         sampleRate: s.audio.sampleRate,
         showWaveform: s.ui.showWaveform,
         soundEnabled: s.ui.soundEnabled,
+        soundVolume: s.ui.soundVolume / 100,
         hotkeyMode: s.hotkey.mode,
         silenceThresholdRms: s.audio.silenceThresholdRms,
         silenceDurationMs: s.audio.silenceDurationMs,
@@ -152,7 +174,7 @@ export default function App(): JSX.Element {
       const myToken = ++startTokenRef.current;
       const cfg = configRef.current;
       try {
-        if (cfg.soundEnabled) startBeep();
+        if (cfg.soundEnabled) startBeep(cfg.soundVolume);
 
         // Sprint 4d Phase 4 — branch on streaming mode. Both branches end
         // up registering the same analyser for the waveform UI + the
@@ -214,7 +236,7 @@ export default function App(): JSX.Element {
     const offStop = window.voiceToText.recording.onStop(async () => {
       // Bump token so any in-flight onStart's await knows to bail out.
       startTokenRef.current++;
-      if (configRef.current.soundEnabled) stopBeep();
+      if (configRef.current.soundEnabled) stopBeep(configRef.current.soundVolume);
       // Tear down the silence detector first so a final tick can't fire
       // a duplicate autoStop while we're already stopping.
       detectorRef.current?.dispose();
@@ -292,7 +314,7 @@ export default function App(): JSX.Element {
         lastStateRef.current !== 'error' &&
         configRef.current.soundEnabled
       ) {
-        errorBeep();
+        errorBeep(configRef.current.soundVolume);
       }
       lastStateRef.current = update.state;
       setState(update.state);
@@ -332,60 +354,7 @@ export default function App(): JSX.Element {
     return () => window.clearInterval(id);
   }, [state]);
 
-  const containerStyle: CSSProperties = {
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-    color: '#F8FAFD',
-    background: backgrounds[state],
-    borderRadius: 14,
-    padding: '12px 16px',
-    margin: 8,
-    height: 'calc(100% - 16px)',
-    boxSizing: 'border-box',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    fontSize: 13,
-    lineHeight: 1.3,
-    boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-    backdropFilter: 'blur(12px)'
-  };
-
-  const titleRow: CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    fontWeight: 600
-  };
-
-  const subtleRow: CSSProperties = {
-    fontSize: 11,
-    opacity: 0.85,
-    marginTop: 2,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  };
-
-  // Sprint 4d Phase 4 — interim text. Italic + slightly faded to signal
-  // "in progress". Multi-line OK but capped at 2 lines so the overlay
-  // height stays predictable; we show the tail end of the text (latest
-  // chunks) by slicing in JS rather than fighting CSS bidi.
-  const interimRow: CSSProperties = {
-    fontSize: 11,
-    opacity: 0.75,
-    fontStyle: 'italic',
-    marginTop: 2,
-    maxHeight: 32,
-    overflow: 'hidden',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    whiteSpace: 'normal',
-    wordBreak: 'break-word'
-  };
-
-  const stateText =
-    state === 'recording' ? `${labels[state]} ${formatTime(elapsedSec)}` : labels[state];
+  const stateText = labels[state];
 
   // Sprint 4d Phase 2 — show "auto-stop in Xs" countdown when silence has
   // been detected, only in auto-stop mode and during recording.
@@ -393,7 +362,7 @@ export default function App(): JSX.Element {
     state === 'recording' &&
     configRef.current.hotkeyMode === 'auto-stop' &&
     silenceRemainingMs !== null
-      ? `auto-stop ใน ${Math.ceil(silenceRemainingMs / 1000)}s`
+      ? `เงียบอยู่ · หยุดอัตโนมัติใน ${Math.ceil(silenceRemainingMs / 1000)}s`
       : null;
 
   // Sprint 4d Phase 4 — interim streaming text takes priority over the
@@ -406,36 +375,69 @@ export default function App(): JSX.Element {
         ? message || 'Unknown error'
         : state === 'recording' && interimText
           ? interimText
-          : (autoStopHint ?? '');
+          : (autoStopHint ?? hints[state]);
 
   const isInterim = state === 'recording' && !!interimText;
+  const showWave = state === 'recording' && !!analyser && configRef.current.showWaveform;
+  const busy = state === 'processing' || state === 'injecting';
 
   return (
     <>
-      <style>{`
-        @keyframes pulse {
-          0%   { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0.45); }
-          70%  { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
-          100% { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0); }
-        }
-        body, html, #root { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden; }
-      `}</style>
-      <div style={containerStyle}>
-        <StatusBadge state={state} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={titleRow}>{stateText}</div>
+      <style>{overlayStyles}</style>
+      <div className={`ovl ovl--${state}`} role="status" aria-live="polite">
+        <div className="ovl__sheen" />
+        <StatusOrb state={state} />
+
+        <div className="ovl__body">
+          <div className="ovl__title-row">
+            <span className="ovl__title">{stateText}</span>
+            {state === 'recording' && <span className="ovl__timer">{formatTime(elapsedSec)}</span>}
+            <span className="ovl__chip">{captions[state]}</span>
+            {modeBadge && state === 'recording' && (
+              <span className="ovl__chip ovl__chip--mode">{modeBadge}</span>
+            )}
+          </div>
           {subText && (
-            <div style={isInterim ? interimRow : subtleRow}>
+            <div
+              className={
+                isInterim
+                  ? 'ovl__sub ovl__sub--interim'
+                  : state === 'success'
+                    ? 'ovl__sub ovl__sub--result'
+                    : 'ovl__sub'
+              }
+              title={subText}
+            >
               {isInterim ? tailOfText(subText, 180) : subText}
             </div>
           )}
         </div>
-        {state === 'recording' && analyser && configRef.current.showWaveform && (
-          <Waveform analyser={analyser} width={96} height={36} />
+
+        {showWave && (
+          <div className="ovl__wave">
+            <Waveform analyser={analyser} width={84} height={34} />
+          </div>
         )}
+        {busy && (
+          <div className="ovl__dots" aria-hidden>
+            <span />
+            <span />
+            <span />
+          </div>
+        )}
+
+        <div className={`ovl__bar${busy ? ' ovl__bar--busy' : ''}`} />
+        <div className="ovl__brand">9VoiceToText</div>
       </div>
     </>
   );
+}
+
+function badgeFor(mode: HotkeyMode, streaming: boolean): string {
+  if (streaming) return 'LIVE';
+  if (mode === 'auto-stop') return 'AUTO';
+  if (mode === 'push-to-talk') return 'PTT';
+  return '';
 }
 
 function formatTime(sec: number): string {

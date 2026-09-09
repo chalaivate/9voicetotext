@@ -12,7 +12,7 @@ export function GeneralPage(): JSX.Element {
 
   return (
     <>
-      <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>General</h1>
+      <h1>General</h1>
 
       <Card title="Appearance">
         <Field label="Theme" hint="Light, dark, or follow the system.">

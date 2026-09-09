@@ -105,7 +105,11 @@ if (ensureSingleInstance()) {
     }
 
     tray.init({
-      openSettings: () => settingsWindow.open()
+      openSettings: () => settingsWindow.open(),
+      getHotkey: () => {
+        const s = getSettings();
+        return { combo: s.hotkey.combo, mode: s.hotkey.mode };
+      }
       // openHistory: provided in Sprint 4c
     });
     overlay.ensure();
@@ -121,10 +125,20 @@ if (ensureSingleInstance()) {
       });
     }
 
+    // Settings → General → "Launch at login". Applied at startup and on change.
+    applyLaunchOnStartup(settings.app.launchOnStartup);
+
     // Re-register hotkey when the user changes combo OR mode via Settings.
     let lastCombo = settings.hotkey.combo;
     let lastMode = settings.hotkey.mode;
+    let lastLaunchOnStartup = settings.app.launchOnStartup;
     onSettingsChange((s) => {
+      // Keep the tray menu's "Hotkey: …" line in sync with Settings.
+      tray.refresh();
+      if (s.app.launchOnStartup !== lastLaunchOnStartup) {
+        lastLaunchOnStartup = s.app.launchOnStartup;
+        applyLaunchOnStartup(s.app.launchOnStartup);
+      }
       if (s.hotkey.combo !== lastCombo || s.hotkey.mode !== lastMode) {
         try {
           hotkey.register(s.hotkey.combo, s.hotkey.mode);
@@ -142,4 +156,18 @@ if (ensureSingleInstance()) {
 
     logger.info(`${APP_NAME} ready`);
   });
+}
+
+/**
+ * Register / unregister the app as a login item. No-op in dev (the Electron
+ * binary would be registered instead of the packaged app) and on Linux.
+ */
+function applyLaunchOnStartup(enabled: boolean): void {
+  if (!app.isPackaged || process.platform === 'linux') return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: true });
+    logger.info('login item updated', { openAtLogin: enabled });
+  } catch (err) {
+    logger.warn('failed to update login item', { message: (err as Error).message });
+  }
 }

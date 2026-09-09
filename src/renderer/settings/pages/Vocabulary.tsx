@@ -71,7 +71,7 @@ export function VocabularyPage(): JSX.Element {
 
   return (
     <>
-      <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>Vocabulary</h1>
+      <h1>Vocabulary</h1>
 
       <Card
         title="Presets"
