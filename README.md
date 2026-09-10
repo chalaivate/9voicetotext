@@ -79,6 +79,16 @@ silently and you'll see an orange overlay asking you to paste manually
 Character Picker. If the hotkey appears to do nothing, disable it at
 **System Settings → Keyboard → Keyboard Shortcuts → Input Sources**.
 
+**Native module mismatch after packaging.** `npm run build:mac` rebuilds
+`keytar` and `uiohook-napi` for each target arch and leaves the last one in
+`node_modules`. If `npm run dev` then fails with
+`incompatible architecture (have 'x86_64', need 'arm64')`, restore the host
+build:
+
+```bash
+npm run rebuild:native
+```
+
 ## Install (end users)
 
 Pre-built installers are attached to each [GitHub Release](https://github.com/chalaivate/9voicetotext/releases).

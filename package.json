@@ -23,6 +23,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "build:mac": "npm run build && electron-builder --mac",
+    "rebuild:native": "npm rebuild keytar uiohook-napi",
     "build:win": "npm run build && electron-builder --win",
     "build:all": "npm run build && electron-builder -mw",
     "release": "npm run build && electron-builder -mw --publish always",
