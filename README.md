@@ -6,8 +6,10 @@ Built on Electron + TypeScript + React + Tailwind, powered by OpenAI Whisper.
 Hold a global hotkey, speak Thai/English/mixed, release — the transcribed text
 is pasted at your cursor in any app (VS Code, Claude Code, Word, Slack, etc.).
 
-> **Status:** v0.2.0 (September 2026) — new app icon, redesigned overlay and
-> settings UI with Light/Dark theme. See [`docs/ux-review-2026-09.md`](docs/ux-review-2026-09.md).
+> **Status:** v0.3.0 (September 2026) — new app icon, caption-style overlay
+> (large centred text above a configurable anchor line, minimal status pill
+> with a live waveform), settings UI with Light/Dark theme, streaming
+> hallucination guard. See [`docs/ux-review-2026-09.md`](docs/ux-review-2026-09.md).
 > Sprint 4d Phase 2 + Sprint 5 Packaging complete (May 2026).
 > Daily-driver-ready with **3 hotkey modes** (toggle, push-to-talk, **auto-stop on
 > silence**), **gpt-4o-transcribe** as default model, hallucination filter,
@@ -48,14 +50,15 @@ When `npm run dev` is running:
 
 - A tray/menu-bar icon appears (microphone glyph).
 - Press **Ctrl+Cmd+Space** (macOS) or **Ctrl+Alt+Space** (Windows) — start beep,
-  the recording overlay slides in (corner chosen in Settings → General) with a
-  live waveform: "กำลังฟัง · LISTENING".
-- Speak.
-- Press the hotkey again — stop beep, overlay switches to "กำลังถอดเสียง ·
-  TRANSCRIBING" with a spinner.
+  a small translucent "Listening" pill appears centred near the bottom of the
+  screen with a live waveform and timer.
+- Speak. In streaming mode the words appear as large captions just above the
+  pill while you talk.
+- Press the hotkey again — stop beep, the pill switches to "Transcribing".
 - Within ~2s the transcribed text is pasted at your cursor in whatever app
-  has focus. Overlay shows "เสร็จเรียบร้อย · DONE" with the text for 1s and
-  auto-hides.
+  has focus. The caption shows the final text with a "Pasted" pill for 1.5s
+  and auto-hides. Caption size, colour, background and position are under
+  Settings → General → Caption.
 - On error (no API key, network, paste blocked) the overlay turns orange with
   a Thai/English explanation and auto-hides after 5s.
 

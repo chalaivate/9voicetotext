@@ -1,5 +1,6 @@
 import type { WhisperClient } from './whisper-client';
 import { logger } from '@main/utils/logger';
+import { filterHallucinations } from './post-process';
 
 /**
  * Sprint 4d Phase 4 — chunked live streaming transcription orchestrator.
@@ -56,6 +57,27 @@ export interface ChunkedTranscriberDeps {
  * prompt can fit alongside under the ~244 token total budget.
  */
 const PROMPT_CONTEXT_CHARS = 800;
+
+/**
+ * A whole chunk (≈5 s of audio) that transcribes to exactly one term from
+ * the vocabulary prompt — "ชไลเวท", "9Expert", "Power BI" — is almost always
+ * the model echoing the prompt over silence, not speech. The generic
+ * prompt-echo filter has a 15-char floor to protect short real utterances
+ * in the non-streaming path; for streaming chunks we can be stricter
+ * because a real 5-second chunk carries far more than one word.
+ */
+export function isVocabularyTermEcho(text: string, vocab: string): boolean {
+  const needle = text
+    .trim()
+    .toLowerCase()
+    .replace(/^[\s.,;:!?"'()[\]]+|[\s.,;:!?"'()[\]]+$/g, '');
+  if (!needle || needle.length > 40) return false;
+  const terms = vocab
+    .split(/[,;:.\n]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t.length >= 2);
+  return terms.includes(needle);
+}
 
 export function buildChunkPrompt(vocab: string, runningText: string): string {
   const trimmed = runningText.trim();
@@ -210,7 +232,29 @@ export class ChunkedTranscriber {
           ...(language ? { language } : {})
         }
       });
-      const text = (result.text ?? '').trim();
+      let text = (result.text ?? '').trim();
+      // Per-chunk hallucination guard. A quiet chunk makes the model
+      // "transcribe" the vocabulary prompt instead (the user's own name,
+      // brand names…). The non-streaming path already filters this on
+      // the final text; streaming must do it per chunk or the echo shows
+      // up live in the caption. Only the vocabulary prompt is used for
+      // echo detection — the running-text part of the prompt is handled
+      // by dedupeChunkOverlap below.
+      if (text) {
+        const guard = filterHallucinations(text, {
+          audioDurationSec: payload.durationMs / 1000,
+          whisperPrompt: vocab
+        });
+        const vocabEcho = !guard.filtered && isVocabularyTermEcho(text, vocab);
+        if (guard.filtered || vocabEcho) {
+          logger.info('streaming chunk filtered as hallucination', {
+            index: payload.index,
+            chars: text.length,
+            reason: guard.filtered ? guard.reason : 'vocabulary-term-echo'
+          });
+          text = '';
+        }
+      }
       if (text) {
         // Whisper occasionally echoes the `prompt` parameter back at the
         // start of its output rather than treating it as pure context.

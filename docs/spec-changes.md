@@ -3,6 +3,41 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-09-10 — v0.3.0 — Caption-style overlay + streaming hallucination guard
+
+**What changed (user feedback on v0.2.0):** the top-right card was too busy
+and the transcribed text too small to read from across a classroom. In LIVE
+mode the user's own name ("ชไลเวท") appeared whenever the room went quiet.
+
+**What landed:**
+
+- **Caption overlay.** The overlay is now a wide transparent strip centred
+  on the display. An invisible anchor line sits at `ui.caption.anchorPercent`
+  of the screen height (default 90% from the top). Transcribed text floats
+  above the line (default 28 px, white, transparent background with a soft
+  shadow); the status pill hangs just below it: coloured dot, English label
+  (Listening / Transcribing / Pasting / Pasted / Copied / Error), a
+  Siri-style layered sine waveform in the centre, timer on the right.
+  No app name, no mode chips.
+- **Configurable caption** (`ui.caption`): show/hide, font size, text colour,
+  background (transparent / frosted glass / solid), background colour and
+  opacity, anchor line percent. Editable on Settings → General → Caption.
+  `ui.overlayPosition` is kept in the schema for compatibility but is no
+  longer used.
+- **Waveform** rewritten as three phase-shifted sinusoids under a
+  raised-cosine envelope, amplitude driven by the mic RMS, glow + core
+  strokes in a lime → white → blue gradient. Idles with a slow breathing
+  motion so the pill never looks frozen.
+- **Streaming hallucination guard.** (1) `ChunkedRecorder` reports the
+  peak RMS of each chunk; the overlay drops silent non-final chunks before
+  they reach the API and turns a silent final chunk into an empty marker.
+  (2) `ChunkedTranscriber` runs `filterHallucinations` with the vocabulary
+  prompt on every chunk, plus a stricter `isVocabularyTermEcho` rule: a
+  chunk that transcribes to exactly one vocabulary term is discarded.
+  Covered by two new unit tests.
+- `OVERLAY.successHideMs` raised from 1 s to 1.5 s so the final caption can
+  be read before it fades.
+
 ## 2026-09-09 — v0.2.0 — App icon, overlay redesign, theme support
 
 **Spec said:** §11.4 lists the design tokens; the overlay and settings UI

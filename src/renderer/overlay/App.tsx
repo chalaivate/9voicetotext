@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { AppState, HotkeyMode, StateUpdate } from '../../shared/types';
+import type { CaptionSettings } from '../../preload/api';
 import { startRecording, type RecordingHandle } from './recorder/media-recorder';
 import { startChunkedRecording, type ChunkedRecorderHandle } from './recorder/chunked-recorder';
 import { SilenceDetector, rmsFromAnalyser } from './recorder/silence-detector';
-import { StatusOrb } from './components/StatusOrb';
 import { Waveform } from './components/Waveform';
 import { overlayStyles } from './styles';
 import { errorBeep, startBeep, stopBeep } from './sounds/beeps';
@@ -36,34 +36,24 @@ interface AudioConfig {
  */
 const SILENT_AUDIO_RMS_THRESHOLD = 0.003;
 
-/** Thai headline per state — the big line the user reads at a glance. */
+/** Status pill label per state (English by request). */
 const labels: Record<AppState, string> = {
-  idle: 'พร้อมใช้งาน',
-  recording: 'กำลังฟัง',
-  processing: 'กำลังถอดเสียง',
-  injecting: 'กำลังวางข้อความ',
-  success: 'เสร็จเรียบร้อย',
-  error: 'เกิดข้อผิดพลาด'
+  idle: 'Ready',
+  recording: 'Listening',
+  processing: 'Transcribing',
+  injecting: 'Pasting',
+  success: 'Pasted',
+  error: 'Error'
 };
 
-/** English micro-caption shown in the state chip next to the headline. */
-const captions: Record<AppState, string> = {
-  idle: 'READY',
-  recording: 'LISTENING',
-  processing: 'TRANSCRIBING',
-  injecting: 'PASTING',
-  success: 'DONE',
-  error: 'ERROR'
-};
-
-/** Secondary hint per state (used when there is no richer text to show). */
-const hints: Record<AppState, string> = {
-  idle: 'กด hotkey เพื่อเริ่มพูด',
-  recording: 'พูดได้เลย · กด hotkey อีกครั้งเพื่อหยุด',
-  processing: 'AI กำลังแปลงเสียงเป็นข้อความ…',
-  injecting: 'กำลังส่งข้อความไปยังเคอร์เซอร์…',
-  success: '',
-  error: ''
+const DEFAULT_CAPTION: CaptionSettings = {
+  show: true,
+  fontSize: 28,
+  textColor: '#FFFFFF',
+  background: 'none',
+  backgroundColor: '#0D1B2A',
+  backgroundOpacity: 60,
+  anchorPercent: 90
 };
 
 export default function App(): JSX.Element {
@@ -76,8 +66,10 @@ export default function App(): JSX.Element {
   const [silenceRemainingMs, setSilenceRemainingMs] = useState<number | null>(null);
   /** Sprint 4d Phase 4 — running text from streaming mode, shown live during recording. */
   const [interimText, setInterimText] = useState<string>('');
-  /** Mode badge (LIVE / AUTO / PTT) mirrored from settings so it can render. */
-  const [modeBadge, setModeBadge] = useState<string>('');
+  /** Caption appearance, mirrored from settings so it can render. */
+  const [caption, setCaption] = useState<CaptionSettings>(DEFAULT_CAPTION);
+  /** Output mode decides the success label ("Pasted" vs "Copied"). */
+  const [outputMode, setOutputMode] = useState<'paste' | 'clipboard' | 'both'>('paste');
   const handleRef = useRef<RecordingHandle | null>(null);
   /** Sprint 4d Phase 4 — chunked recorder used when settings.transcription.streaming === true. */
   const chunkedRef = useRef<ChunkedRecorderHandle | null>(null);
@@ -110,7 +102,8 @@ export default function App(): JSX.Element {
     let cancelled = false;
     void window.voiceToText.settings.get().then((s) => {
       if (cancelled) return;
-      setModeBadge(badgeFor(s.hotkey.mode, s.transcription.streaming));
+      setCaption(s.ui.caption);
+      setOutputMode(s.output.mode);
       configRef.current = {
         deviceId: s.audio.inputDeviceId,
         sampleRate: s.audio.sampleRate,
@@ -125,7 +118,8 @@ export default function App(): JSX.Element {
       };
     });
     const off = window.voiceToText.settings.onChange((s) => {
-      setModeBadge(badgeFor(s.hotkey.mode, s.transcription.streaming));
+      setCaption(s.ui.caption);
+      setOutputMode(s.output.mode);
       configRef.current = {
         deviceId: s.audio.inputDeviceId,
         sampleRate: s.audio.sampleRate,
@@ -187,9 +181,15 @@ export default function App(): JSX.Element {
               chunkDurationMs: cfg.streamingChunkMs
             },
             {
-              onChunk: ({ data, mimeType, index, isFinal, durationMs }) => {
+              onChunk: ({ data, mimeType, index, isFinal, durationMs, peakRms }) => {
+                // Silent chunk guard. Whisper hallucinates vocabulary-prompt
+                // terms on silent audio, so a quiet chunk never reaches the
+                // API: non-final chunks are dropped outright, the final one
+                // becomes an empty marker so main can still finalize.
+                const silent = peakRms < SILENT_AUDIO_RMS_THRESHOLD;
+                if (silent && !isFinal) return;
                 window.voiceToText.recording.sendChunk({
-                  data,
+                  data: silent ? new ArrayBuffer(0) : data,
                   mimeType,
                   index,
                   isFinal,
@@ -354,90 +354,80 @@ export default function App(): JSX.Element {
     return () => window.clearInterval(id);
   }, [state]);
 
-  const stateText = labels[state];
+  const label = state === 'success' && outputMode === 'clipboard' ? 'Copied' : labels[state];
 
-  // Sprint 4d Phase 2 — show "auto-stop in Xs" countdown when silence has
-  // been detected, only in auto-stop mode and during recording.
-  const autoStopHint =
+  // Sprint 4d Phase 2 — auto-stop countdown replaces the label while the
+  // room is silent so the user knows why recording is about to end.
+  const autoStopLabel =
     state === 'recording' &&
     configRef.current.hotkeyMode === 'auto-stop' &&
     silenceRemainingMs !== null
-      ? `เงียบอยู่ · หยุดอัตโนมัติใน ${Math.ceil(silenceRemainingMs / 1000)}s`
+      ? `Silent · auto-stop in ${Math.ceil(silenceRemainingMs / 1000)}s`
       : null;
 
-  // Sprint 4d Phase 4 — interim streaming text takes priority over the
-  // auto-stop countdown when both could show. The countdown is implied
-  // by the silence anyway (no new text arriving).
-  const subText =
+  // Caption text: live interim while listening, kept (dimmed) while the
+  // last chunk is transcribing, final text once pasted. Errors live in the
+  // pill so the caption never shows a message styled like speech.
+  const captionText =
     state === 'success'
       ? text
-      : state === 'error'
-        ? message || 'Unknown error'
-        : state === 'recording' && interimText
-          ? interimText
-          : (autoStopHint ?? hints[state]);
-
-  const isInterim = state === 'recording' && !!interimText;
-  const showWave = state === 'recording' && !!analyser && configRef.current.showWaveform;
-  const busy = state === 'processing' || state === 'injecting';
+      : state === 'recording' || state === 'processing' || state === 'injecting'
+        ? tailOfText(interimText, 220)
+        : '';
+  const captionDim = state !== 'success' && state !== 'recording';
+  const showWave = state === 'recording' || state === 'processing' || state === 'injecting';
+  const showCaption = caption.show && !!captionText;
 
   return (
     <>
       <style>{overlayStyles}</style>
       <div className={`ovl ovl--${state}`} role="status" aria-live="polite">
-        <div className="ovl__sheen" />
-        <StatusOrb state={state} />
-
-        <div className="ovl__body">
-          <div className="ovl__title-row">
-            <span className="ovl__title">{stateText}</span>
-            {state === 'recording' && <span className="ovl__timer">{formatTime(elapsedSec)}</span>}
-            <span className="ovl__chip">{captions[state]}</span>
-            {modeBadge && state === 'recording' && (
-              <span className="ovl__chip ovl__chip--mode">{modeBadge}</span>
-            )}
-          </div>
-          {subText && (
+        <div className="cap-area">
+          {showCaption && (
             <div
-              className={
-                isInterim
-                  ? 'ovl__sub ovl__sub--interim'
-                  : state === 'success'
-                    ? 'ovl__sub ovl__sub--result'
-                    : 'ovl__sub'
-              }
-              title={subText}
+              className={`cap cap--${caption.background}${captionDim ? ' cap--dim' : ''}`}
+              style={captionStyle(caption)}
             >
-              {isInterim ? tailOfText(subText, 180) : subText}
+              {captionText}
             </div>
           )}
         </div>
-
-        {showWave && (
-          <div className="ovl__wave">
-            <Waveform analyser={analyser} width={84} height={34} />
+        <div className="pill-area">
+          <div className={`pill pill--${state}`}>
+            <span className="pill__dot" aria-hidden />
+            <span className="pill__label">{autoStopLabel ?? label}</span>
+            {showWave && (
+              <span className="pill__wave">
+                <Waveform
+                  analyser={analyser}
+                  active={state === 'recording' && configRef.current.showWaveform}
+                  width={150}
+                  height={30}
+                />
+              </span>
+            )}
+            {state === 'recording' && <span className="pill__time">{formatTime(elapsedSec)}</span>}
+            {state === 'error' && <span className="pill__msg">{message || 'Unknown error'}</span>}
           </div>
-        )}
-        {busy && (
-          <div className="ovl__dots" aria-hidden>
-            <span />
-            <span />
-            <span />
-          </div>
-        )}
-
-        <div className={`ovl__bar${busy ? ' ovl__bar--busy' : ''}`} />
-        <div className="ovl__brand">9VoiceToText</div>
+        </div>
       </div>
     </>
   );
 }
 
-function badgeFor(mode: HotkeyMode, streaming: boolean): string {
-  if (streaming) return 'LIVE';
-  if (mode === 'auto-stop') return 'AUTO';
-  if (mode === 'push-to-talk') return 'PTT';
-  return '';
+/** Inline style for the caption box from user settings (colour, size, background). */
+function captionStyle(c: CaptionSettings): CSSProperties {
+  const style: CSSProperties = { fontSize: c.fontSize, color: c.textColor };
+  if (c.background !== 'none') {
+    style.background = hexToRgba(c.backgroundColor, c.backgroundOpacity / 100);
+  }
+  return style;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return `rgba(13, 27, 42, ${alpha})`;
+  return `rgba(${parseInt(m[1]!, 16)}, ${parseInt(m[2]!, 16)}, ${parseInt(m[3]!, 16)}, ${alpha})`;
 }
 
 function formatTime(sec: number): string {

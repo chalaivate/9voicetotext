@@ -48,8 +48,19 @@ export interface SettingsShape {
     soundEnabled: boolean;
     soundVolume: number;
     theme: 'system' | 'light' | 'dark';
+    caption: CaptionSettings;
   };
   app: { launchOnStartup: boolean; checkForUpdates: boolean; historyLimit: number };
+}
+
+export interface CaptionSettings {
+  show: boolean;
+  fontSize: number;
+  textColor: string;
+  background: 'none' | 'glass' | 'solid';
+  backgroundColor: string;
+  backgroundOpacity: number;
+  anchorPercent: number;
 }
 
 export type SettingsPatch = {

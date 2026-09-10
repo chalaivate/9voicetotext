@@ -82,22 +82,24 @@ export class OverlayWindow {
   }
 
   /**
-   * Place the overlay in the corner chosen in Settings → General → Overlay
-   * position, on whichever display currently holds the cursor.
+   * Centre the overlay strip horizontally on the display that holds the
+   * cursor, and align its internal anchor line with
+   * `ui.caption.anchorPercent` of that display's work area (default 90%
+   * from the top). Caption text sits above the line, the status pill below.
    */
   private positionForSettings(win: BrowserWindow): void {
     try {
-      const position = getSettings().ui.overlayPosition;
+      const anchorPercent = getSettings().ui.caption.anchorPercent;
       const cursor = screen.getCursorScreenPoint();
       const display = screen.getDisplayNearestPoint(cursor);
       const { x, y, width, height } = display.workArea;
-      const right = position === 'top-right' || position === 'bottom-right';
-      const bottom = position === 'bottom-left' || position === 'bottom-right';
-      const winX = right ? x + width - OVERLAY.width - OVERLAY.edgeOffset : x + OVERLAY.edgeOffset;
-      const winY = bottom
-        ? y + height - OVERLAY.height - OVERLAY.edgeOffset
-        : y + OVERLAY.edgeOffset;
-      win.setPosition(Math.round(winX), Math.round(winY), false);
+      const winW = Math.round(
+        Math.min(OVERLAY.maxWidth, Math.max(OVERLAY.minWidth, width * OVERLAY.widthFraction))
+      );
+      const lineY = y + Math.round((height * anchorPercent) / 100);
+      const winX = x + Math.round((width - winW) / 2);
+      const winY = lineY - OVERLAY.captionAreaHeight;
+      win.setBounds({ x: winX, y: winY, width: winW, height: OVERLAY.height }, false);
     } catch (err) {
       logger.warn('overlay positioning failed', { err: (err as Error).message });
     }

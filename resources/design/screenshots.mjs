@@ -21,11 +21,11 @@ await new Promise((r) => server.listen(0, r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 const settings = {
-  hotkey: { combo: 'Control+Command+Space', mode: 'auto-stop' },
+  hotkey: { combo: 'Control+Command+Space', mode: 'toggle' },
   audio: { inputDeviceId: '', sampleRate: 16000, silenceThresholdRms: 0.015, silenceDurationMs: 10000 },
   transcription: { provider: 'whisper-api', model: 'gpt-4o-transcribe', apiKeyRef: '', language: 'auto', customVocabulary: ['9Expert', 'Power BI', 'Claude Code'], vocabularyPresets: { coding: true, microsoft365: true, brandNames: true, thai: true }, filterHallucinations: true, enablePostProcessing: false, postProcessPreset: 'default', streaming: true, streamingChunkMs: 5000 },
   output: { mode: 'paste', restoreClipboard: true, pasteDelayMs: 150 },
-  ui: { overlayPosition: 'top-right', showWaveform: true, soundEnabled: false, soundVolume: 30, theme: process.env.THEME ?? 'dark' },
+  ui: { overlayPosition: 'top-right', showWaveform: true, soundEnabled: false, soundVolume: 30, theme: process.env.THEME ?? 'dark', caption: { show: true, fontSize: 28, textColor: '#FFFFFF', background: 'none', backgroundColor: '#0D1B2A', backgroundOpacity: 60, anchorPercent: 90 } },
   app: { launchOnStartup: false, checkForUpdates: true, historyLimit: 50 }
 };
 
@@ -60,9 +60,9 @@ await ctx.addInitScript(mockScript);
 const page = await ctx.newPage();
 page.on('pageerror', (e) => console.error('PAGEERROR', e.message));
 page.on('console', (m) => { if (m.type() === 'error') console.error('CONSOLE', m.text()); });
-await page.setViewportSize({ width: 360, height: 96 });
+await page.setViewportSize({ width: 900, height: 264 });
 await page.goto(`${base}/overlay/index.html`);
-await page.addStyleTag({ content: 'html { background: linear-gradient(135deg,#f3f5f9,#dfe6f2) !important; }' });
+await page.addStyleTag({ content: 'html { background: linear-gradient(135deg,#dbe6f6,#eef2f8 50%,#f3eee2) !important; } body::before { content: ""; position: fixed; left: 0; right: 0; top: 196px; border-top: 1px dashed rgba(36,134,255,0.6); pointer-events: none; }' });
 await page.waitForTimeout(300);
 const states = [
   ['recording', { state: 'recording', interimText: '' }, true],
