@@ -83,6 +83,9 @@ export default function App(): JSX.Element {
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: ${tokens.color.border}; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: ${tokens.color.slate}; }
+        /* The sidebar is a window-drag region (frameless macOS window); every
+           interactive child must opt out or clicks are swallowed by the drag. */
+        .sidebar-nav, .nav-item, .sidebar-footer { -webkit-app-region: no-drag; }
         .nav-item {
           position: relative;
           display: flex; align-items: center; gap: 10px;
@@ -163,7 +166,7 @@ function Sidebar({
           <div style={{ fontSize: 11, color: tokens.color.textDim, marginTop: 1 }}>Settings</div>
         </div>
       </div>
-      <nav style={{ flex: 1 }}>
+      <nav className="sidebar-nav" style={{ flex: 1 }}>
         {TABS.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -178,7 +181,7 @@ function Sidebar({
           );
         })}
       </nav>
-      <div style={sidebarFooter}>
+      <div className="sidebar-footer" style={sidebarFooter}>
         <span style={versionPill}>{version ? `v${version}` : 'dev'}</span>
         <div style={{ marginTop: 8, lineHeight: 1.5 }}>
           Built with Claude Code
