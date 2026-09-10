@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { app, nativeTheme } from 'electron';
 import { APP_ID, APP_NAME, composeWhisperPrompt } from '@shared/constants';
 import { IPC } from '@shared/ipc-channels';
 import { logger } from '@main/utils/logger';
@@ -135,6 +135,8 @@ if (ensureSingleInstance()) {
     onSettingsChange((s) => {
       // Keep the tray menu's "Hotkey: …" line in sync with Settings.
       tray.refresh();
+      // Native title bar / dialogs follow the chosen theme.
+      nativeTheme.themeSource = s.ui.theme;
       if (s.app.launchOnStartup !== lastLaunchOnStartup) {
         lastLaunchOnStartup = s.app.launchOnStartup;
         applyLaunchOnStartup(s.app.launchOnStartup);

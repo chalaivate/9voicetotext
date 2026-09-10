@@ -18,6 +18,8 @@ export class SettingsWindow {
     }
 
     const theme = getSettings().ui.theme;
+    // Keep the native title bar (and dialogs) in the same theme as the page.
+    nativeTheme.themeSource = theme;
     const prefersLight =
       theme === 'light' || (theme === 'system' && !nativeTheme.shouldUseDarkColors);
 
@@ -27,12 +29,11 @@ export class SettingsWindow {
       minWidth: 760,
       minHeight: 560,
       title: `${APP_NAME} Settings`,
-      // macOS native traffic lights, hidden inset.
-      titleBarStyle: isMac ? 'hiddenInset' : 'default',
-      // macOS sidebar vibrancy; ignored on Win/Linux.
-      ...(isMac ? { vibrancy: 'sidebar' as const } : {}),
-      // Windows 11 mica; ignored elsewhere.
-      ...(process.platform === 'win32' ? { backgroundMaterial: 'mica' as const } : {}),
+      // Native title bar on every platform. The hidden-inset bar plus
+      // `-webkit-app-region: drag` regions repeatedly broke on macOS (nav
+      // buttons swallowed clicks, or the window could not be dragged at
+      // all), so the window now relies on the OS title bar for moving.
+      titleBarStyle: 'default',
       show: false,
       backgroundColor: prefersLight ? '#F4F6FA' : '#13171F',
       webPreferences: {

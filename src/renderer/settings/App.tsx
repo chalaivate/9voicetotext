@@ -83,8 +83,6 @@ export default function App(): JSX.Element {
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-thumb { background: ${tokens.color.border}; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: ${tokens.color.slate}; }
-        /* Belt and braces: nothing interactive may sit inside a drag region. */
-        .sidebar-nav, .nav-item, .sidebar-footer, main { -webkit-app-region: no-drag; }
         .nav-item {
           position: relative;
           display: flex; align-items: center; gap: 10px;
@@ -205,23 +203,17 @@ const sidebar: CSSProperties = {
   borderRight: `1px solid ${tokens.color.border}`,
   display: 'flex',
   flexDirection: 'column',
-  paddingTop: 'env(titlebar-area-height, 36px)'
+  paddingTop: 16
 };
 
-/**
- * Only the logo row is a window-drag handle for the frameless (macOS
- * hiddenInset) window. The whole sidebar used to be the drag region with
- * `no-drag` on the buttons, but on macOS the buttons still stopped
- * receiving clicks, so the drag region is now kept away from anything
- * interactive.
- */
+// The window uses the native OS title bar for dragging (see
+// main/windows/settings.ts), so no -webkit-app-region rules live here.
 const sidebarHeader: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 10,
-  padding: '4px 16px 18px',
-  WebkitAppRegion: 'drag'
-} as CSSProperties;
+  padding: '4px 16px 18px'
+};
 
 const sidebarFooter: CSSProperties = {
   padding: '12px 16px 16px',
@@ -245,6 +237,5 @@ const versionPill: CSSProperties = {
 const main: CSSProperties = {
   flex: 1,
   overflowY: 'auto',
-  padding: '40px 36px 48px',
-  WebkitAppRegion: 'no-drag'
-} as CSSProperties;
+  padding: '32px 36px 48px'
+};
