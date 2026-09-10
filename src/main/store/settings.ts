@@ -15,6 +15,33 @@ const Language = z.enum(['auto', 'th', 'en']);
 const OutputMode = z.enum(['paste', 'clipboard', 'both']);
 const OverlayPosition = z.enum(['top-right', 'top-left', 'bottom-right', 'bottom-left']);
 const Theme = z.enum(['system', 'light', 'dark']);
+const CaptionBackground = z.enum(['none', 'glass', 'solid']);
+const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
+/**
+ * v0.3 caption overlay. The transcribed text floats above an anchor line
+ * (default 90% down the screen); the status pill sits just below it.
+ */
+const CaptionSchema = z
+  .object({
+    show: z.boolean().default(true),
+    fontSize: z.number().int().min(14).max(72).default(28),
+    textColor: HexColor.default('#FFFFFF'),
+    background: CaptionBackground.default('none'),
+    backgroundColor: HexColor.default('#0D1B2A'),
+    backgroundOpacity: z.number().int().min(0).max(100).default(60),
+    /** Anchor line, % of screen height measured from the top. */
+    anchorPercent: z.number().int().min(30).max(95).default(90)
+  })
+  .default({
+    show: true,
+    fontSize: 28,
+    textColor: '#FFFFFF',
+    background: 'none',
+    backgroundColor: '#0D1B2A',
+    backgroundOpacity: 60,
+    anchorPercent: 90
+  });
 
 export const SettingsSchema = z
   .object({
@@ -111,14 +138,24 @@ export const SettingsSchema = z
         showWaveform: z.boolean().default(true),
         soundEnabled: z.boolean().default(true),
         soundVolume: z.number().int().min(0).max(100).default(30),
-        theme: Theme.default('system')
+        theme: Theme.default('system'),
+        caption: CaptionSchema
       })
       .default({
         overlayPosition: 'top-right',
         showWaveform: true,
         soundEnabled: true,
         soundVolume: 30,
-        theme: 'system'
+        theme: 'system',
+        caption: {
+          show: true,
+          fontSize: 28,
+          textColor: '#FFFFFF',
+          background: 'none',
+          backgroundColor: '#0D1B2A',
+          backgroundOpacity: 60,
+          anchorPercent: 90
+        }
       }),
     app: z
       .object({

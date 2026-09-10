@@ -433,3 +433,47 @@ describe('buildChunkPrompt', () => {
     expect(prompt.startsWith('V ')).toBe(true);
   });
 });
+
+describe('ChunkedTranscriber — per-chunk hallucination guard', () => {
+  it('drops a chunk that merely echoes the vocabulary prompt (silent-audio case)', async () => {
+    const h = makeHarness({ vocab: 'Names: ชไลเวท, อ.เวท, 9Expert, 9Expert Training.' });
+    h.whisper.transcribe
+      .mockResolvedValueOnce(result('สวัสดีครับ วันนี้เราจะเรียน Power BI'))
+      // A silent chunk: the model "transcribes" the prompt instead.
+      .mockResolvedValueOnce(result('ชไลเวท'))
+      .mockResolvedValueOnce(result('กับ Copilot กันครับ'));
+
+    for (let index = 0; index < 3; index++) {
+      await h.transcriber.submit({
+        audio: Buffer.from(audio),
+        mimeType: 'audio/webm',
+        index,
+        isFinal: index === 2,
+        durationMs: 5000
+      });
+    }
+
+    expect(h.transcriber.getRunningText()).toBe(
+      'สวัสดีครับ วันนี้เราจะเรียน Power BI กับ Copilot กันครับ'
+    );
+    expect(h.onFinal).toHaveBeenCalledWith(
+      'สวัสดีครับ วันนี้เราจะเรียน Power BI กับ Copilot กันครับ',
+      15000
+    );
+  });
+
+  it('keeps real speech that happens to contain vocabulary terms', async () => {
+    const h = makeHarness({ vocab: 'Names: ชไลเวท, อ.เวท, 9Expert.' });
+    h.whisper.transcribe.mockResolvedValueOnce(
+      result('ผมชื่อชไลเวท เป็นวิทยากรของ 9Expert สอนเรื่อง Power BI มาหลายปีแล้วครับ')
+    );
+    await h.transcriber.submit({
+      audio: Buffer.from(audio),
+      mimeType: 'audio/webm',
+      index: 0,
+      isFinal: true,
+      durationMs: 5000
+    });
+    expect(h.transcriber.getRunningText()).toContain('วิทยากรของ 9Expert');
+  });
+});

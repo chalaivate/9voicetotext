@@ -12,7 +12,7 @@ export function GeneralPage(): JSX.Element {
 
   return (
     <>
-      <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>General</h1>
+      <h1>General</h1>
 
       <Card title="Appearance">
         <Field label="Theme" hint="Light, dark, or follow the system.">
@@ -26,28 +26,103 @@ export function GeneralPage(): JSX.Element {
             ]}
           />
         </Field>
-        <Field label="Overlay position" hint="Where the recording overlay appears on screen.">
-          <Select
-            value={settings.ui.overlayPosition}
-            onValueChange={(v) =>
-              void patch({
-                ui: { overlayPosition: v as typeof settings.ui.overlayPosition }
-              })
-            }
-            options={[
-              { value: 'top-right', label: 'Top right' },
-              { value: 'top-left', label: 'Top left' },
-              { value: 'bottom-right', label: 'Bottom right' },
-              { value: 'bottom-left', label: 'Bottom left' }
-            ]}
-          />
-        </Field>
         <Field label="Show waveform" hint="Live audio visualization while recording.">
           <Toggle
             checked={settings.ui.showWaveform}
             onChange={(v) => void patch({ ui: { showWaveform: v } })}
           />
         </Field>
+      </Card>
+
+      <Card
+        title="Caption"
+        description="The transcribed text floats above an anchor line on screen; the status pill sits just below it."
+      >
+        <Field label="Show transcribed text" hint="Turn off to keep only the status pill.">
+          <Toggle
+            checked={settings.ui.caption.show}
+            onChange={(v) => void patch({ ui: { caption: { ...settings.ui.caption, show: v } } })}
+          />
+        </Field>
+        <Field label="Anchor line" hint="Percent of screen height, measured from the top.">
+          <Input
+            type="number"
+            min={30}
+            max={95}
+            value={settings.ui.caption.anchorPercent}
+            onChange={(e) => {
+              const n = Math.max(30, Math.min(95, Number(e.target.value) || 90));
+              void patch({ ui: { caption: { ...settings.ui.caption, anchorPercent: n } } });
+            }}
+          />
+        </Field>
+        <Field label="Font size" hint="Pixels. 28 reads well on a laptop, 36+ on a projector.">
+          <Input
+            type="number"
+            min={14}
+            max={72}
+            value={settings.ui.caption.fontSize}
+            onChange={(e) => {
+              const n = Math.max(14, Math.min(72, Number(e.target.value) || 28));
+              void patch({ ui: { caption: { ...settings.ui.caption, fontSize: n } } });
+            }}
+          />
+        </Field>
+        <Field label="Text colour">
+          <Input
+            type="color"
+            value={settings.ui.caption.textColor}
+            onChange={(e) =>
+              void patch({ ui: { caption: { ...settings.ui.caption, textColor: e.target.value } } })
+            }
+            style={{ padding: 2, width: 64 }}
+          />
+        </Field>
+        <Field label="Background" hint="Transparent, frosted glass, or a solid colour.">
+          <Select
+            value={settings.ui.caption.background}
+            onValueChange={(v) =>
+              void patch({
+                ui: {
+                  caption: { ...settings.ui.caption, background: v as 'none' | 'glass' | 'solid' }
+                }
+              })
+            }
+            options={[
+              { value: 'none', label: 'Transparent' },
+              { value: 'glass', label: 'Frosted glass' },
+              { value: 'solid', label: 'Solid colour' }
+            ]}
+          />
+        </Field>
+        {settings.ui.caption.background !== 'none' && (
+          <>
+            <Field label="Background colour">
+              <Input
+                type="color"
+                value={settings.ui.caption.backgroundColor}
+                onChange={(e) =>
+                  void patch({
+                    ui: { caption: { ...settings.ui.caption, backgroundColor: e.target.value } }
+                  })
+                }
+                style={{ padding: 2, width: 64 }}
+              />
+            </Field>
+            <Field label="Background opacity" hint="0 to 100.">
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={settings.ui.caption.backgroundOpacity}
+                onChange={(e) => {
+                  const n = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                  void patch({ ui: { caption: { ...settings.ui.caption, backgroundOpacity: n } } });
+                }}
+              />
+            </Field>
+          </>
+        )}
       </Card>
 
       <Card title="Sound">

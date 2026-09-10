@@ -32,15 +32,30 @@ asarUnpack:
   - "**/keytar/**"
   - "**/uiohook-napi/**"
 
+# Tray icons are loaded at runtime from `process.resourcesPath/resources/icons`
+# (see src/main/tray/icons.ts). `buildResources` above is only consumed at
+# build time (installer/app icon), so the PNGs must be copied explicitly.
+extraResources:
+  - from: resources/icons
+    to: resources/icons
+    filter:
+      - "tray-*.png"
+      - "icon.png"
+
 # ---- macOS ---------------------------------------------------------------
 mac:
   category: public.app-category.productivity
   icon: resources/icons/icon.icns
+  # x64 first, arm64 LAST on purpose: electron-builder rebuilds the native
+  # modules (keytar, uiohook-napi) in node_modules for each arch in turn and
+  # leaves the last one in place. Building arm64 last keeps node_modules
+  # usable for `npm run dev` on Apple Silicon. If you build a single arch
+  # that differs from your Mac, run `npm run rebuild:native` afterwards.
   target:
     - target: dmg
       arch:
-        - arm64
         - x64
+        - arm64
   # No code signing for v1.0 — see docs/INSTALL-WORKAROUND.md.
   identity: null
   # hardenedRuntime requires signing; skip both.

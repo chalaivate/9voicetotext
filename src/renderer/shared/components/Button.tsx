@@ -9,9 +9,10 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 export function Button({ variant = 'secondary', size = 'md', style, ...rest }: Props): JSX.Element {
   const palette: Record<NonNullable<Props['variant']>, CSSProperties> = {
     primary: {
-      background: tokens.color.brandBlue,
+      background: `linear-gradient(135deg, ${tokens.color.brandBlueLight}, ${tokens.color.brandBlue})`,
       color: '#fff',
-      border: 'none'
+      border: 'none',
+      boxShadow: '0 4px 12px rgba(36, 134, 255, 0.35)'
     },
     secondary: {
       background: tokens.color.bgRaised,

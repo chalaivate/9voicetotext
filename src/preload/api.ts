@@ -48,8 +48,19 @@ export interface SettingsShape {
     soundEnabled: boolean;
     soundVolume: number;
     theme: 'system' | 'light' | 'dark';
+    caption: CaptionSettings;
   };
   app: { launchOnStartup: boolean; checkForUpdates: boolean; historyLimit: number };
+}
+
+export interface CaptionSettings {
+  show: boolean;
+  fontSize: number;
+  textColor: string;
+  background: 'none' | 'glass' | 'solid';
+  backgroundColor: string;
+  backgroundOpacity: number;
+  anchorPercent: number;
 }
 
 export type SettingsPatch = {
@@ -67,6 +78,15 @@ export interface HotkeyCheckResult {
   accelerator?: string;
   /** Reason for failure (parse error, conflict, etc). */
   message?: string;
+}
+
+export interface AppInfo {
+  version: string;
+  electron: string;
+  chrome: string;
+  node: string;
+  platform: string;
+  arch: string;
 }
 
 export interface VoiceToTextApi {
@@ -126,6 +146,10 @@ export interface VoiceToTextApi {
   windows: {
     closeSelf(): void;
   };
+  app: {
+    /** App version + runtime versions. Sandboxed renderers can't read `process`. */
+    info(): Promise<AppInfo>;
+  };
 }
 
 export const api: VoiceToTextApi = {
@@ -162,5 +186,8 @@ export const api: VoiceToTextApi = {
   },
   windows: {
     closeSelf: () => ipcRenderer.send(IPC.windows.closeSelf)
+  },
+  app: {
+    info: () => ipcRenderer.invoke(IPC.app.info)
   }
 };

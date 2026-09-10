@@ -135,12 +135,23 @@ const DEFAULT_PROMPT_FALLBACK = [
 /** Backward-compat for any consumer not yet migrated to composeWhisperPrompt. */
 export const CODING_PROMPT = DEFAULT_PROMPT_FALLBACK;
 
+/**
+ * v0.3 caption overlay geometry. The window is a wide transparent strip
+ * centred horizontally; an invisible anchor line sits `captionAreaHeight`
+ * px from its top. Caption text grows upward from that line, the status
+ * pill hangs just below it. Width is derived from the display at show()
+ * time (see windows/overlay.ts); `width` is only the initial value.
+ */
 export const OVERLAY = {
-  width: 280,
-  height: 80,
-  /** Offset from screen edge, px. */
-  edgeOffset: 20,
+  width: 900,
+  height: 264,
+  /** Space above the anchor line reserved for caption text (px). */
+  captionAreaHeight: 196,
+  /** Window width as a fraction of the display work area, clamped. */
+  widthFraction: 0.7,
+  minWidth: 520,
+  maxWidth: 1280,
   /** Auto-hide delays after a terminal state. */
-  successHideMs: 1_000,
+  successHideMs: 1_500,
   errorHideMs: 5_000
 } as const;

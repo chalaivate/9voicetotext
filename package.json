@@ -1,6 +1,6 @@
 {
   "name": "9voicetotext",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "description": "Cross-platform voice-to-text desktop app. Speak naturally. Type instantly. Anywhere.",
   "main": "./out/main/index.js",
   "author": "9Expert Training <info@9expert.co.th>",
@@ -23,6 +23,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "build:mac": "npm run build && electron-builder --mac",
+    "rebuild:native": "npm rebuild keytar uiohook-napi",
     "build:win": "npm run build && electron-builder --win",
     "build:all": "npm run build && electron-builder -mw",
     "release": "npm run build && electron-builder -mw --publish always",

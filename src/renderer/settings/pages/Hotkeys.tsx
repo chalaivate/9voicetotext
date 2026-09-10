@@ -25,7 +25,7 @@ export function HotkeysPage(): JSX.Element {
 
   return (
     <>
-      <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>Hotkeys</h1>
+      <h1>Hotkeys</h1>
 
       <Card
         title="Recording shortcut"

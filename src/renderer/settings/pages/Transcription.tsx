@@ -46,7 +46,7 @@ export function TranscriptionPage(): JSX.Element {
 
   return (
     <>
-      <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>Transcription</h1>
+      <h1>Transcription</h1>
 
       <Card
         title="Model"

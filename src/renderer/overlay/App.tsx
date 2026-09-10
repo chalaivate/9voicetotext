@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { AppState, HotkeyMode, StateUpdate } from '../../shared/types';
+import type { CaptionSettings } from '../../preload/api';
 import { startRecording, type RecordingHandle } from './recorder/media-recorder';
 import { startChunkedRecording, type ChunkedRecorderHandle } from './recorder/chunked-recorder';
 import { SilenceDetector, rmsFromAnalyser } from './recorder/silence-detector';
-import { StatusBadge } from './components/StatusBadge';
 import { Waveform } from './components/Waveform';
+import { overlayStyles } from './styles';
 import { errorBeep, startBeep, stopBeep } from './sounds/beeps';
 
 interface AudioConfig {
@@ -12,6 +13,8 @@ interface AudioConfig {
   sampleRate: 16000 | 24000 | 48000;
   showWaveform: boolean;
   soundEnabled: boolean;
+  /** 0..1 — mirrors settings.ui.soundVolume (0..100). */
+  soundVolume: number;
   /** Sprint 4d Phase 2 — auto-stop VAD config. Read each recording. */
   hotkeyMode: HotkeyMode;
   silenceThresholdRms: number;
@@ -33,22 +36,24 @@ interface AudioConfig {
  */
 const SILENT_AUDIO_RMS_THRESHOLD = 0.003;
 
+/** Status pill label per state (English by request). */
 const labels: Record<AppState, string> = {
   idle: 'Ready',
-  recording: 'กำลังบันทึก…',
-  processing: 'กำลังแปลง…',
-  injecting: 'กำลังวาง…',
-  success: 'เสร็จแล้ว',
-  error: 'เกิดข้อผิดพลาด'
+  recording: 'Listening',
+  processing: 'Transcribing',
+  injecting: 'Pasting',
+  success: 'Pasted',
+  error: 'Error'
 };
 
-const backgrounds: Record<AppState, string> = {
-  idle: 'rgba(13, 27, 42, 0.85)',
-  recording: 'rgba(255, 59, 48, 0.92)',
-  processing: 'rgba(36, 134, 255, 0.92)',
-  injecting: 'rgba(36, 134, 255, 0.92)',
-  success: 'rgba(52, 199, 89, 0.92)',
-  error: 'rgba(255, 149, 0, 0.95)'
+const DEFAULT_CAPTION: CaptionSettings = {
+  show: true,
+  fontSize: 28,
+  textColor: '#FFFFFF',
+  background: 'none',
+  backgroundColor: '#0D1B2A',
+  backgroundOpacity: 60,
+  anchorPercent: 90
 };
 
 export default function App(): JSX.Element {
@@ -61,6 +66,10 @@ export default function App(): JSX.Element {
   const [silenceRemainingMs, setSilenceRemainingMs] = useState<number | null>(null);
   /** Sprint 4d Phase 4 — running text from streaming mode, shown live during recording. */
   const [interimText, setInterimText] = useState<string>('');
+  /** Caption appearance, mirrored from settings so it can render. */
+  const [caption, setCaption] = useState<CaptionSettings>(DEFAULT_CAPTION);
+  /** Output mode decides the success label ("Pasted" vs "Copied"). */
+  const [outputMode, setOutputMode] = useState<'paste' | 'clipboard' | 'both'>('paste');
   const handleRef = useRef<RecordingHandle | null>(null);
   /** Sprint 4d Phase 4 — chunked recorder used when settings.transcription.streaming === true. */
   const chunkedRef = useRef<ChunkedRecorderHandle | null>(null);
@@ -79,6 +88,7 @@ export default function App(): JSX.Element {
     sampleRate: 16000,
     showWaveform: true,
     soundEnabled: true,
+    soundVolume: 0.3,
     hotkeyMode: 'toggle',
     silenceThresholdRms: 0.015,
     silenceDurationMs: 10_000,
@@ -92,11 +102,14 @@ export default function App(): JSX.Element {
     let cancelled = false;
     void window.voiceToText.settings.get().then((s) => {
       if (cancelled) return;
+      setCaption(s.ui.caption);
+      setOutputMode(s.output.mode);
       configRef.current = {
         deviceId: s.audio.inputDeviceId,
         sampleRate: s.audio.sampleRate,
         showWaveform: s.ui.showWaveform,
         soundEnabled: s.ui.soundEnabled,
+        soundVolume: s.ui.soundVolume / 100,
         hotkeyMode: s.hotkey.mode,
         silenceThresholdRms: s.audio.silenceThresholdRms,
         silenceDurationMs: s.audio.silenceDurationMs,
@@ -105,11 +118,14 @@ export default function App(): JSX.Element {
       };
     });
     const off = window.voiceToText.settings.onChange((s) => {
+      setCaption(s.ui.caption);
+      setOutputMode(s.output.mode);
       configRef.current = {
         deviceId: s.audio.inputDeviceId,
         sampleRate: s.audio.sampleRate,
         showWaveform: s.ui.showWaveform,
         soundEnabled: s.ui.soundEnabled,
+        soundVolume: s.ui.soundVolume / 100,
         hotkeyMode: s.hotkey.mode,
         silenceThresholdRms: s.audio.silenceThresholdRms,
         silenceDurationMs: s.audio.silenceDurationMs,
@@ -152,7 +168,7 @@ export default function App(): JSX.Element {
       const myToken = ++startTokenRef.current;
       const cfg = configRef.current;
       try {
-        if (cfg.soundEnabled) startBeep();
+        if (cfg.soundEnabled) startBeep(cfg.soundVolume);
 
         // Sprint 4d Phase 4 — branch on streaming mode. Both branches end
         // up registering the same analyser for the waveform UI + the
@@ -165,9 +181,15 @@ export default function App(): JSX.Element {
               chunkDurationMs: cfg.streamingChunkMs
             },
             {
-              onChunk: ({ data, mimeType, index, isFinal, durationMs }) => {
+              onChunk: ({ data, mimeType, index, isFinal, durationMs, peakRms }) => {
+                // Silent chunk guard. Whisper hallucinates vocabulary-prompt
+                // terms on silent audio, so a quiet chunk never reaches the
+                // API: non-final chunks are dropped outright, the final one
+                // becomes an empty marker so main can still finalize.
+                const silent = peakRms < SILENT_AUDIO_RMS_THRESHOLD;
+                if (silent && !isFinal) return;
                 window.voiceToText.recording.sendChunk({
-                  data,
+                  data: silent ? new ArrayBuffer(0) : data,
                   mimeType,
                   index,
                   isFinal,
@@ -214,7 +236,7 @@ export default function App(): JSX.Element {
     const offStop = window.voiceToText.recording.onStop(async () => {
       // Bump token so any in-flight onStart's await knows to bail out.
       startTokenRef.current++;
-      if (configRef.current.soundEnabled) stopBeep();
+      if (configRef.current.soundEnabled) stopBeep(configRef.current.soundVolume);
       // Tear down the silence detector first so a final tick can't fire
       // a duplicate autoStop while we're already stopping.
       detectorRef.current?.dispose();
@@ -292,7 +314,7 @@ export default function App(): JSX.Element {
         lastStateRef.current !== 'error' &&
         configRef.current.soundEnabled
       ) {
-        errorBeep();
+        errorBeep(configRef.current.soundVolume);
       }
       lastStateRef.current = update.state;
       setState(update.state);
@@ -332,110 +354,80 @@ export default function App(): JSX.Element {
     return () => window.clearInterval(id);
   }, [state]);
 
-  const containerStyle: CSSProperties = {
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-    color: '#F8FAFD',
-    background: backgrounds[state],
-    borderRadius: 14,
-    padding: '12px 16px',
-    margin: 8,
-    height: 'calc(100% - 16px)',
-    boxSizing: 'border-box',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    fontSize: 13,
-    lineHeight: 1.3,
-    boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-    backdropFilter: 'blur(12px)'
-  };
+  const label = state === 'success' && outputMode === 'clipboard' ? 'Copied' : labels[state];
 
-  const titleRow: CSSProperties = {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    fontWeight: 600
-  };
-
-  const subtleRow: CSSProperties = {
-    fontSize: 11,
-    opacity: 0.85,
-    marginTop: 2,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap'
-  };
-
-  // Sprint 4d Phase 4 — interim text. Italic + slightly faded to signal
-  // "in progress". Multi-line OK but capped at 2 lines so the overlay
-  // height stays predictable; we show the tail end of the text (latest
-  // chunks) by slicing in JS rather than fighting CSS bidi.
-  const interimRow: CSSProperties = {
-    fontSize: 11,
-    opacity: 0.75,
-    fontStyle: 'italic',
-    marginTop: 2,
-    maxHeight: 32,
-    overflow: 'hidden',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    whiteSpace: 'normal',
-    wordBreak: 'break-word'
-  };
-
-  const stateText =
-    state === 'recording' ? `${labels[state]} ${formatTime(elapsedSec)}` : labels[state];
-
-  // Sprint 4d Phase 2 — show "auto-stop in Xs" countdown when silence has
-  // been detected, only in auto-stop mode and during recording.
-  const autoStopHint =
+  // Sprint 4d Phase 2 — auto-stop countdown replaces the label while the
+  // room is silent so the user knows why recording is about to end.
+  const autoStopLabel =
     state === 'recording' &&
     configRef.current.hotkeyMode === 'auto-stop' &&
     silenceRemainingMs !== null
-      ? `auto-stop ใน ${Math.ceil(silenceRemainingMs / 1000)}s`
+      ? `Silent · auto-stop in ${Math.ceil(silenceRemainingMs / 1000)}s`
       : null;
 
-  // Sprint 4d Phase 4 — interim streaming text takes priority over the
-  // auto-stop countdown when both could show. The countdown is implied
-  // by the silence anyway (no new text arriving).
-  const subText =
+  // Caption text: live interim while listening, kept (dimmed) while the
+  // last chunk is transcribing, final text once pasted. Errors live in the
+  // pill so the caption never shows a message styled like speech.
+  const captionText =
     state === 'success'
       ? text
-      : state === 'error'
-        ? message || 'Unknown error'
-        : state === 'recording' && interimText
-          ? interimText
-          : (autoStopHint ?? '');
-
-  const isInterim = state === 'recording' && !!interimText;
+      : state === 'recording' || state === 'processing' || state === 'injecting'
+        ? tailOfText(interimText, 220)
+        : '';
+  const captionDim = state !== 'success' && state !== 'recording';
+  const showWave = state === 'recording' || state === 'processing' || state === 'injecting';
+  const showCaption = caption.show && !!captionText;
 
   return (
     <>
-      <style>{`
-        @keyframes pulse {
-          0%   { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0.45); }
-          70%  { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0); }
-          100% { box-shadow: 0 0 0 0   rgba(255, 255, 255, 0); }
-        }
-        body, html, #root { margin: 0; padding: 0; height: 100%; background: transparent; overflow: hidden; }
-      `}</style>
-      <div style={containerStyle}>
-        <StatusBadge state={state} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={titleRow}>{stateText}</div>
-          {subText && (
-            <div style={isInterim ? interimRow : subtleRow}>
-              {isInterim ? tailOfText(subText, 180) : subText}
+      <style>{overlayStyles}</style>
+      <div className={`ovl ovl--${state}`} role="status" aria-live="polite">
+        <div className="cap-area">
+          {showCaption && (
+            <div
+              className={`cap cap--${caption.background}${captionDim ? ' cap--dim' : ''}`}
+              style={captionStyle(caption)}
+            >
+              {captionText}
             </div>
           )}
         </div>
-        {state === 'recording' && analyser && configRef.current.showWaveform && (
-          <Waveform analyser={analyser} width={96} height={36} />
-        )}
+        <div className="pill-area">
+          <div className={`pill pill--${state}`}>
+            <span className="pill__dot" aria-hidden />
+            <span className="pill__label">{autoStopLabel ?? label}</span>
+            {showWave && (
+              <span className="pill__wave">
+                <Waveform
+                  analyser={analyser}
+                  active={state === 'recording' && configRef.current.showWaveform}
+                  width={150}
+                  height={30}
+                />
+              </span>
+            )}
+            {state === 'recording' && <span className="pill__time">{formatTime(elapsedSec)}</span>}
+            {state === 'error' && <span className="pill__msg">{message || 'Unknown error'}</span>}
+          </div>
+        </div>
       </div>
     </>
   );
+}
+
+/** Inline style for the caption box from user settings (colour, size, background). */
+function captionStyle(c: CaptionSettings): CSSProperties {
+  const style: CSSProperties = { fontSize: c.fontSize, color: c.textColor };
+  if (c.background !== 'none') {
+    style.background = hexToRgba(c.backgroundColor, c.backgroundOpacity / 100);
+  }
+  return style;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return `rgba(13, 27, 42, ${alpha})`;
+  return `rgba(${parseInt(m[1]!, 16)}, ${parseInt(m[2]!, 16)}, ${parseInt(m[3]!, 16)}, ${alpha})`;
 }
 
 function formatTime(sec: number): string {
