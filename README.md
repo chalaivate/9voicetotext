@@ -6,10 +6,10 @@ Built on Electron + TypeScript + React + Tailwind, powered by OpenAI Whisper.
 Hold a global hotkey, speak Thai/English/mixed, release — the transcribed text
 is pasted at your cursor in any app (VS Code, Claude Code, Word, Slack, etc.).
 
-> **Status:** v0.3.0 (September 2026) — new app icon, caption-style overlay
+> **Status:** v0.4.0 (October 2026) — new app icon, caption-style overlay
 > (large centred text above a configurable anchor line, minimal status pill
 > with a live waveform), settings UI with Light/Dark theme, streaming
-> hallucination guard. See [`docs/ux-review-2026-09.md`](docs/ux-review-2026-09.md).
+> hallucination guard, and a History window (memory-only by default). See [`docs/ux-review-2026-09.md`](docs/ux-review-2026-09.md).
 > Sprint 4d Phase 2 + Sprint 5 Packaging complete (May 2026).
 > Daily-driver-ready with **3 hotkey modes** (toggle, push-to-talk, **auto-stop on
 > silence**), **gpt-4o-transcribe** as default model, hallucination filter,
@@ -66,6 +66,9 @@ When `npm run dev` is running:
 | ------------------------------------------------ | -------------------------------------------- | ----------------------------------------- |
 | ![](docs/screenshots/overlay-recording-live.png) | ![](docs/screenshots/overlay-processing.png) | ![](docs/screenshots/overlay-success.png) |
 
+- Right-click the tray → **History…** to see, search, copy or delete recent
+  transcriptions. History lives in memory only unless you turn on
+  **Settings → General → Keep history on disk**.
 - Right-click the tray → **Quit 9VoiceToText** to exit.
 
 **macOS first-run:** the first paste will trigger a permission prompt:

@@ -161,9 +161,21 @@ export const SettingsSchema = z
       .object({
         launchOnStartup: z.boolean().default(false),
         checkForUpdates: z.boolean().default(true),
-        historyLimit: z.number().int().min(0).max(500).default(50)
+        /** Max entries kept by the History window; 0 disables history. */
+        historyLimit: z.number().int().min(0).max(500).default(50),
+        /**
+         * Keep history on disk between launches. Off by default: the About
+         * page promises transcribed text is never written to disk, so the
+         * user must opt in explicitly.
+         */
+        persistHistory: z.boolean().default(false)
       })
-      .default({ launchOnStartup: false, checkForUpdates: true, historyLimit: 50 })
+      .default({
+        launchOnStartup: false,
+        checkForUpdates: true,
+        historyLimit: 50,
+        persistHistory: false
+      })
   })
   .default({});
 

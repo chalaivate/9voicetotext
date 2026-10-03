@@ -3,6 +3,34 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-10-03 — v0.4.0 — History window
+
+**Spec said:** §11.3 sketches a History window for Sprint 4c; the tray
+menu shipped with a disabled "History…" item and `app.historyLimit` was
+stored but never read.
+
+**What landed:**
+
+- **`HistoryStore`** (`src/main/history/store.ts`) — keeps the most recent
+  transcriptions newest-first, capped at `app.historyLimit` (0 = off, and
+  existing entries are dropped). Every successful transcription (pasted or
+  copied) is recorded from the controller's `success` broadcast in
+  `src/main/index.ts`.
+- **Privacy default: memory only.** Entries vanish on quit unless the new
+  `app.persistHistory` setting is on, in which case they are saved through
+  electron-store (`history.json`). Turning the setting off wipes the file
+  immediately. Settings → General → App → "Keep history on disk" carries a
+  plain-language warning.
+- **History window** (`src/renderer/history/*`, `src/main/windows/history.ts`)
+  — native title bar like Settings, search box (⌘F), per-entry Copy (done in
+  main via `clipboard.writeText`) and Delete, Clear all, relative timestamps,
+  duration and output badges, empty / off / no-match states, footer that
+  says where the data lives. Opens from the tray ("History…"), from the
+  Settings sidebar ("History" entry) and from Settings → General → App.
+- **IPC**: `history:list/remove/clear/copy` (invoke) and `history:changed`
+  (broadcast); `windows:openHistory`.
+- Unit tests for the store (limits, persistence on/off, change events).
+
 ## 2026-09-10 — v0.3.0 — Caption-style overlay + streaming hallucination guard
 
 **What changed (user feedback on v0.2.0):** the top-right card was too busy

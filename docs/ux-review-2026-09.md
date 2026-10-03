@@ -64,32 +64,38 @@
 - แก้ bug "ชไลเวท" โผล่ตอนเงียบใน LIVE mode: chunk ที่เงียบไม่ถูกส่งไป API และทุก chunk
   ผ่านตัวกรอง prompt-echo ก่อนแสดง (unit test เพิ่ม 2 เคส)
 
+## 1c. อัปเดต v0.4.0 (3 ต.ค. 2569)
+
+- หน้าต่าง History ใช้งานได้แล้ว: เปิดจาก tray, จาก sidebar ของ Settings หรือ
+  Settings › General › App ค้นหา, copy, ลบ, ล้างทั้งหมด เก็บล่าสุดตาม History limit
+- ค่าเริ่มต้นเก็บในหน่วยความจำเท่านั้น (หายเมื่อปิดแอป) ตามคำสัญญาเรื่อง privacy
+  เปิด "Keep history on disk" ได้เองใน Settings พร้อมคำเตือน ปิดเมื่อไหร่ไฟล์ถูกลบทันที
+- หน้าต่าง Settings เปลี่ยนมาใช้ title bar มาตรฐานของ OS เพื่อให้ลากหน้าต่างและคลิกเมนูได้แน่นอน
+
 ## 2. รายการที่แนะนำให้ทำต่อ (ยังไม่ได้แก้)
 
 เรียงตามผลกระทบต่อผู้ใช้
 
-1. **Settings ที่ยังไม่มีผลจริง** — `app.checkForUpdates`, `app.historyLimit`,
-   `output.restoreClipboard`, `output.pasteDelayMs` ถูกเก็บใน store แต่ไม่มีโค้ดใช้งาน
-   ควร implement (electron-updater, history window, ส่ง option เข้า injector)
-   หรือซ่อนออกจาก UI ชั่วคราวเพื่อไม่ให้ผู้ใช้สับสน
-2. **History window** — tray มีเมนู "History…" แต่ disabled ตลอด (Sprint 4c ยังไม่ทำ)
-   เป็นฟีเจอร์ที่เหมาะกับการ demo มาก (ดูข้อความย้อนหลัง, copy ซ้ำ)
-3. **Code signing / notarization** — v0.2.0 ยัง unsigned ผู้เรียนที่โหลดไปติดตั้งจะเจอ
+1. **Settings ที่ยังไม่มีผลจริง** — `app.checkForUpdates`, `output.restoreClipboard`,
+   `output.pasteDelayMs` ถูกเก็บใน store แต่ไม่มีโค้ดใช้งาน
+   ควร implement (electron-updater, ส่ง option เข้า injector)
+   หรือซ่อนออกจาก UI ชั่วคราวเพื่อไม่ให้ผู้ใช้สับสน (History limit ใช้งานได้แล้วใน v0.4.0)
+2. **Code signing / notarization** — v0.2.0 ยัง unsigned ผู้เรียนที่โหลดไปติดตั้งจะเจอ
    Gatekeeper/SmartScreen ควรสมัคร Apple Developer + ซื้อ cert Windows ก่อนแจกวงกว้าง
-4. **CI ยังไม่รัน lint/typecheck** — `.github/workflows/release.yml` รันเฉพาะ `npm test`
+3. **CI ยังไม่รัน lint/typecheck** — `.github/workflows/release.yml` รันเฉพาะ `npm test`
    ควรเพิ่ม `npm run typecheck && npm run lint` และ workflow แยกสำหรับ PR
-5. **ยังไม่มี renderer/e2e test** — `tests/` มีเฉพาะ unit ของ main process
+4. **ยังไม่มี renderer/e2e test** — `tests/` มีเฉพาะ unit ของ main process
    มี `test:e2e` script แต่ไม่มี playwright config/spec ควรเพิ่ม smoke test ของ overlay
    โดยใช้ mock `window.voiceToText` (แนวเดียวกับ `resources/design/screenshots.mjs`)
-6. **Onboarding ครั้งแรก** — ผู้ใช้ใหม่ต้องรู้เองว่าต้องเปิด Settings ใส่ API key
+5. **Onboarding ครั้งแรก** — ผู้ใช้ใหม่ต้องรู้เองว่าต้องเปิด Settings ใส่ API key
    ควรเปิด Settings อัตโนมัติเมื่อไม่มี key และแสดง checklist สิทธิ์ (Microphone,
    Accessibility) ในหน้า General
-7. **Accessibility** — settings มี `aria-*` แค่ 2 จุด ควรเพิ่ม label ให้ Toggle/Select
+6. **Accessibility** — settings มี `aria-*` แค่ 2 จุด ควรเพิ่ม label ให้ Toggle/Select
    และ focus ring ที่มองเห็นได้
-8. **ฟอนต์ CI** — UI ระบุ `LINE Seed Sans TH` / `Google Sans` เป็นอันดับแรกแล้ว แต่จะใช้
+7. **ฟอนต์ CI** — UI ระบุ `LINE Seed Sans TH` / `Google Sans` เป็นอันดับแรกแล้ว แต่จะใช้
    ได้เฉพาะเครื่องที่ติดตั้งฟอนต์ไว้ หากต้องการให้เหมือนกันทุกเครื่องต้อง bundle ฟอนต์
    (ตรวจ license ก่อน)
-9. **README ล้าสมัยบางจุด** — ยังอธิบาย overlay แบบเก่า ("overlay turns blue") และ
+8. **README ล้าสมัยบางจุด** — ยังอธิบาย overlay แบบเก่า ("overlay turns blue") และ
    status เป็น Sprint 5 ควรอัปเดตให้ตรง v0.2.0
 
 ## 3. วิธีสร้างไอคอน / screenshot ใหม่

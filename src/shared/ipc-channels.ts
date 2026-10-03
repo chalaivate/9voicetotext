@@ -49,8 +49,15 @@ export const IPC = {
     closeSelf: 'windows:closeSelf'
   },
   history: {
+    /** invoke → HistoryEntry[] (newest first). */
     list: 'history:list',
-    add: 'history:add',
-    clear: 'history:clear'
+    /** invoke(id) → true. */
+    remove: 'history:remove',
+    /** invoke → true. */
+    clear: 'history:clear',
+    /** invoke(id) → true; main writes the entry text to the OS clipboard. */
+    copy: 'history:copy',
+    /** main → renderer broadcast with the full list after any change. */
+    changed: 'history:changed'
   }
 } as const;

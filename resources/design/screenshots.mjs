@@ -26,7 +26,7 @@ const settings = {
   transcription: { provider: 'whisper-api', model: 'gpt-4o-transcribe', apiKeyRef: '', language: 'auto', customVocabulary: ['9Expert', 'Power BI', 'Claude Code'], vocabularyPresets: { coding: true, microsoft365: true, brandNames: true, thai: true }, filterHallucinations: true, enablePostProcessing: false, postProcessPreset: 'default', streaming: true, streamingChunkMs: 5000 },
   output: { mode: 'paste', restoreClipboard: true, pasteDelayMs: 150 },
   ui: { overlayPosition: 'top-right', showWaveform: true, soundEnabled: false, soundVolume: 30, theme: process.env.THEME ?? 'dark', caption: { show: true, fontSize: 28, textColor: '#FFFFFF', background: 'none', backgroundColor: '#0D1B2A', backgroundOpacity: 60, anchorPercent: 90 } },
-  app: { launchOnStartup: false, checkForUpdates: true, historyLimit: 50 }
+  app: { launchOnStartup: false, checkForUpdates: true, historyLimit: 50, persistHistory: false }
 };
 
 const mockScript = `
@@ -36,6 +36,14 @@ const mockScript = `
   const emit = (ch, p) => { for (const cb of listeners[ch] ?? []) cb(p); };
   let settings = ${JSON.stringify(settings)};
   const deepMerge = (a, b) => { const o = { ...a }; for (const k in b) o[k] = (b[k] && typeof b[k] === 'object' && !Array.isArray(b[k])) ? deepMerge(a[k] ?? {}, b[k]) : b[k]; return o; };
+  const NOW = Date.now();
+  let history = [
+    { id: '1700000005-5', text: 'สวัสดีครับ วันนี้เราจะมาเรียนรู้เรื่อง Power BI กับ Copilot กันนะครับ เริ่มจากการสร้าง measure ด้วย DAX แบบให้ AI ช่วยเขียน', createdAt: NOW - 40 * 1000, durationMs: 12400, output: 'paste' },
+    { id: '1700000004-4', text: 'Open the Sales dashboard and add a card visual for total revenue this quarter.', createdAt: NOW - 6 * 60 * 1000, durationMs: 5100, output: 'clipboard' },
+    { id: '1700000003-3', text: 'เพิ่ม slicer สำหรับปีงบประมาณ แล้วตั้งค่า default เป็นปีปัจจุบัน', createdAt: NOW - 55 * 60 * 1000, durationMs: 7300, output: 'paste' },
+    { id: '1700000002-2', text: 'ส่งอีเมลหาทีมว่าคลาส Power Automate เลื่อนไปเป็นวันศุกร์หน้า และแนบลิงก์ลงทะเบียนใหม่', createdAt: NOW - 26 * 3600 * 1000, durationMs: 9800, output: 'both' },
+    { id: '1700000001-1', text: 'Create a new measure called Gross Margin equals Revenue minus Cost of Goods Sold divided by Revenue.', createdAt: NOW - 3 * 24 * 3600 * 1000, durationMs: 8200, output: 'paste' }
+  ];
   window.voiceToText = {
     recording: { onStart: on('start'), onStop: on('stop'), sendAudio() {}, cancel() {}, autoStop() {}, sendChunk() {}, silentAudio() {} },
     state: { onUpdate: on('state') },
@@ -43,7 +51,14 @@ const mockScript = `
     secrets: { setApiKey: async () => true, hasApiKey: async () => true, deleteApiKey: async () => true, keyMask: async () => 'sk-****…9xQ2', testApiKey: async () => ({ ok: true, message: 'Key is valid.' }) },
     hotkey: { check: async (c) => ({ ok: true, accelerator: c }) },
     vocabulary: { preview: async () => 'Technical terms: TypeScript, React… Names: ชไลเวท, 9Expert' },
-    windows: { closeSelf() {} },
+    windows: { closeSelf() {}, openHistory() {}, openSettings() {} },
+    history: {
+      list: async () => history.slice(),
+      remove: async (id) => { history = history.filter((e) => e.id !== id); emit('history', history.slice()); return true; },
+      clear: async () => { history = []; emit('history', []); return true; },
+      copy: async () => true,
+      onChange: on('history')
+    },
     app: { info: async () => ({ version: '0.2.0', electron: '30.5.1', chrome: '124.0.6367.243', node: '20.16.0', platform: 'darwin', arch: 'arm64' }) }
   };
   window.__mock = { emit };
@@ -92,6 +107,16 @@ for (const tab of ['Hotkeys', 'Audio', 'Transcription', 'Vocabulary', 'About']) 
   const btn = sp.getByRole('button', { name: tab, exact: false }).first();
   if (await btn.count()) { await btn.click(); await sp.waitForTimeout(350); await sp.screenshot({ path: join(OUT, `settings-${tab.toLowerCase()}.png`) }); }
 }
+// ---- history window
+const hp = await ctx.newPage();
+hp.on('pageerror', (e) => console.error('PAGEERROR', e.message));
+hp.on('console', (m) => { if (m.type() === 'error') console.error('CONSOLE', m.text()); });
+await hp.setViewportSize({ width: 560, height: 680 });
+await hp.goto(`${base}/history/index.html`);
+await hp.waitForTimeout(500);
+await hp.screenshot({ path: join(OUT, 'history.png') });
+const search = hp.getByRole('textbox').first();
+if (await search.count()) { await search.fill('Power BI'); await hp.waitForTimeout(250); await hp.screenshot({ path: join(OUT, 'history-search.png') }); }
 await browser.close();
 server.close();
 console.log('shots ->', OUT);
