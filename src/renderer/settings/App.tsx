@@ -3,6 +3,8 @@ import type { CSSProperties } from 'react';
 import {
   AudioLines,
   BookA,
+  ExternalLink,
+  History as HistoryIcon,
   Info,
   Keyboard,
   Settings2,
@@ -22,19 +24,28 @@ import { AboutPage } from './pages/About';
 
 type TabId = 'general' | 'hotkeys' | 'audio' | 'transcription' | 'vocabulary' | 'about';
 
-interface Tab {
-  id: TabId;
-  label: string;
-  icon: LucideIcon;
-}
+/**
+ * Sidebar entries. A `tab` swaps the page in place; a `window` entry opens
+ * (or focuses) a separate window and never takes the active state.
+ */
+type NavEntry =
+  | { kind: 'tab'; id: TabId; label: string; icon: LucideIcon }
+  | { kind: 'window'; id: string; label: string; icon: LucideIcon; open: () => void };
 
-const TABS: Tab[] = [
-  { id: 'general', label: 'General', icon: Settings2 },
-  { id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
-  { id: 'audio', label: 'Audio', icon: AudioLines },
-  { id: 'transcription', label: 'Transcription', icon: Sparkles },
-  { id: 'vocabulary', label: 'Vocabulary', icon: BookA },
-  { id: 'about', label: 'About', icon: Info }
+const NAV: NavEntry[] = [
+  { kind: 'tab', id: 'general', label: 'General', icon: Settings2 },
+  { kind: 'tab', id: 'hotkeys', label: 'Hotkeys', icon: Keyboard },
+  { kind: 'tab', id: 'audio', label: 'Audio', icon: AudioLines },
+  { kind: 'tab', id: 'transcription', label: 'Transcription', icon: Sparkles },
+  { kind: 'tab', id: 'vocabulary', label: 'Vocabulary', icon: BookA },
+  {
+    kind: 'window',
+    id: 'history',
+    label: 'History',
+    icon: HistoryIcon,
+    open: () => window.voiceToText.windows.openHistory()
+  },
+  { kind: 'tab', id: 'about', label: 'About', icon: Info }
 ];
 
 export default function App(): JSX.Element {
@@ -105,11 +116,13 @@ export default function App(): JSX.Element {
           border-radius: 3px; background: linear-gradient(${tokens.color.brandBlue}, ${tokens.color.accent});
         }
         .nav-item.is-active svg { color: ${tokens.color.brandBlue}; }
+        .nav-item .nav-ext { margin-left: auto; opacity: 0.5; transition: opacity 120ms ease; }
+        .nav-item:hover .nav-ext { opacity: 1; }
         .page { animation: pageIn 180ms ease; }
         .page h1 {
           font-size: 22px; font-weight: 700; letter-spacing: -0.2px; margin: 0 0 20px;
         }
-        a { color: ${tokens.color.brandBlueLight}; }
+        a { color: ${tokens.color.link}; }
       `}</style>
       <div style={layout}>
         <Sidebar active={active} onSelect={setActive} version={version} />
@@ -164,16 +177,30 @@ function Sidebar({
         </div>
       </div>
       <nav className="sidebar-nav" style={{ flex: 1 }}>
-        {TABS.map((tab) => {
-          const Icon = tab.icon;
+        {NAV.map((item) => {
+          const Icon = item.icon;
+          if (item.kind === 'window') {
+            return (
+              <button
+                key={item.id}
+                className="nav-item"
+                onClick={item.open}
+                title="Opens in a separate window"
+              >
+                <Icon size={16} strokeWidth={2} />
+                <span>{item.label}</span>
+                <ExternalLink size={12} strokeWidth={2} className="nav-ext" aria-hidden />
+              </button>
+            );
+          }
           return (
             <button
-              key={tab.id}
-              className={`nav-item${active === tab.id ? ' is-active' : ''}`}
-              onClick={() => onSelect(tab.id)}
+              key={item.id}
+              className={`nav-item${active === item.id ? ' is-active' : ''}`}
+              onClick={() => onSelect(item.id)}
             >
               <Icon size={16} strokeWidth={2} />
-              <span>{tab.label}</span>
+              <span>{item.label}</span>
             </button>
           );
         })}

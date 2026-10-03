@@ -59,7 +59,7 @@ const mockScript = `
       copy: async () => true,
       onChange: on('history')
     },
-    app: { info: async () => ({ version: '0.2.0', electron: '30.5.1', chrome: '124.0.6367.243', node: '20.16.0', platform: 'darwin', arch: 'arm64' }) }
+    app: { info: async () => ({ version: '0.4.0', electron: '30.5.1', chrome: '124.0.6367.243', node: '20.16.0', platform: 'darwin', arch: 'arm64' }) }
   };
   window.__mock = { emit };
 })();`;

@@ -448,7 +448,15 @@ export class RecordingController {
 
   private transition(update: StateUpdate): void {
     this.state = update.state;
-    logger.debug('state transition', update);
+    // Privacy: never log the transcribed text itself (app.log is plaintext on
+    // disk in dev builds). Lengths are enough to debug the pipeline.
+    logger.debug('state transition', {
+      state: update.state,
+      chars: update.text?.length,
+      interimChars: update.interimText?.length,
+      durationMs: update.durationMs,
+      message: update.message
+    });
     this.deps.broadcastState(update);
   }
 }

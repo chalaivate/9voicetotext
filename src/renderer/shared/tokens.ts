@@ -23,7 +23,9 @@ export const tokens = {
     border: 'var(--c-border)',
     text: 'var(--c-text)',
     textDim: 'var(--c-text-dim)',
-    textFaint: 'var(--c-text-faint)'
+    textFaint: 'var(--c-text-faint)',
+    /** Link / text-button colour with enough contrast on both themes. */
+    link: 'var(--c-link)'
   },
   font: {
     sans: '"LINE Seed Sans TH", "Google Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
@@ -58,6 +60,7 @@ export const themeCss = `
     --c-text-faint: #6B7280;
     --c-card-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
     --c-sidebar-glow: rgba(36, 134, 255, 0.16);
+    --c-link: #48B0FF;
   }
   :root[data-theme="light"] {
     color-scheme: light;
@@ -71,6 +74,7 @@ export const themeCss = `
     --c-text-faint: #8A94A3;
     --c-card-shadow: 0 8px 24px rgba(13, 27, 42, 0.06);
     --c-sidebar-glow: rgba(36, 134, 255, 0.12);
+    --c-link: #005CFF;
   }
 `;
 

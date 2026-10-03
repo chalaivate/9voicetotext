@@ -114,6 +114,11 @@ export function AboutPage(): JSX.Element {
         >
           <li>Audio is captured to memory only — never written to disk.</li>
           <li>
+            Recent transcriptions are kept in memory for the History window and cleared when the app
+            quits. Turn on Settings → General → Keep history on disk to save them as plain text in
+            the app&apos;s data folder; turning it off deletes that file.
+          </li>
+          <li>
             The API key is stored encrypted by your operating system (Keychain on macOS, Credential
             Manager on Windows) via keytar.
           </li>

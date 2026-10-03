@@ -8,7 +8,12 @@ import { getSettings } from '@main/store/settings';
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL'];
 
-export class SettingsWindow {
+/**
+ * The History window: recent transcriptions, newest first. Mirrors
+ * {@link SettingsWindow} (native title bar, theme-matched background, Dock
+ * show/hide on macOS) so the two feel like one app.
+ */
+export class HistoryWindow {
   private window: BrowserWindow | null = null;
 
   open(): BrowserWindow {
@@ -25,15 +30,13 @@ export class SettingsWindow {
       theme === 'light' || (theme === 'system' && !nativeTheme.shouldUseDarkColors);
 
     const win = new BrowserWindow({
-      width: 860,
-      height: 640,
-      minWidth: 760,
-      minHeight: 560,
-      title: `${APP_NAME} Settings`,
-      // Native title bar on every platform. The hidden-inset bar plus
-      // `-webkit-app-region: drag` regions repeatedly broke on macOS (nav
-      // buttons swallowed clicks, or the window could not be dragged at
-      // all), so the window now relies on the OS title bar for moving.
+      width: 560,
+      height: 680,
+      minWidth: 460,
+      minHeight: 520,
+      title: `${APP_NAME} History`,
+      // Native title bar on every platform — see SettingsWindow for why the
+      // hidden-inset bar was abandoned.
       titleBarStyle: 'default',
       show: false,
       backgroundColor: prefersLight ? '#F4F6FA' : '#13171F',
@@ -47,14 +50,14 @@ export class SettingsWindow {
 
     if (isDev) {
       const url = process.env['ELECTRON_RENDERER_URL']!;
-      void win.loadURL(`${url}/settings/index.html`);
+      void win.loadURL(`${url}/history/index.html`);
     } else {
-      void win.loadFile(join(__dirname, '../renderer/settings/index.html'));
+      void win.loadFile(join(__dirname, '../renderer/history/index.html'));
     }
 
     win.once('ready-to-show', () => {
       win.show();
-      // Make Dock icon appear while Settings is open (macOS menu-bar app).
+      // Make Dock icon appear while a UI window is open (macOS menu-bar app).
       if (isMac) app.dock?.show();
     });
 
@@ -65,7 +68,7 @@ export class SettingsWindow {
     });
 
     this.window = win;
-    logger.info('settings window opened');
+    logger.info('history window opened');
     return win;
   }
 

@@ -3,6 +3,7 @@ import { Card, Field } from '../../shared/components/Card';
 import { Toggle } from '../../shared/components/Toggle';
 import { Select } from '../../shared/components/Select';
 import { Input } from '../../shared/components/Input';
+import { Button } from '../../shared/components/Button';
 
 export function GeneralPage(): JSX.Element {
   const settings = useSettings((s) => s.settings);
@@ -184,20 +185,51 @@ export function GeneralPage(): JSX.Element {
         </Field>
         <Field
           label="History limit"
-          hint="Maximum recent transcriptions to keep (0 disables history)."
+          hint="Most recent transcriptions to keep. Lowering it drops the oldest entries at once."
         >
-          <Input
-            type="number"
-            min={0}
-            max={500}
-            value={settings.app.historyLimit}
-            onChange={(e) => {
-              const n = Math.max(0, Math.min(500, Number(e.target.value) || 0));
-              void patch({ app: { historyLimit: n } });
-            }}
+          <Select
+            value={String(settings.app.historyLimit)}
+            onValueChange={(v) => void patch({ app: { historyLimit: Number(v) } })}
+            options={historyLimitOptions(settings.app.historyLimit)}
           />
+        </Field>
+        <Field
+          label="Keep history on disk"
+          hint="Off = transcriptions stay in memory and are cleared when the app quits. On = saved to a file on this computer in plain text."
+        >
+          <Toggle
+            checked={settings.app.persistHistory}
+            onChange={(v) => void patch({ app: { persistHistory: v } })}
+          />
+        </Field>
+        <Field label="History window" hint="Browse, copy, or delete recent transcriptions.">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.voiceToText.windows.openHistory()}
+          >
+            Open history
+          </Button>
         </Field>
       </Card>
     </>
   );
+}
+
+const HISTORY_LIMITS = [0, 10, 25, 50, 100, 200, 500];
+
+/**
+ * Fixed choices rather than a free number field: the limit trims history the
+ * moment it changes (and rewrites the on-disk copy when persistence is on),
+ * so a half-typed "5" on the way to "50" must never be committed. A value
+ * outside the list (hand-edited settings file) is kept as its own option.
+ */
+function historyLimitOptions(current: number): { value: string; label: string }[] {
+  const values = HISTORY_LIMITS.includes(current)
+    ? HISTORY_LIMITS
+    : [...HISTORY_LIMITS, current].sort((a, b) => a - b);
+  return values.map((n) => ({
+    value: String(n),
+    label: n === 0 ? 'Off' : `${n} entries`
+  }));
 }
