@@ -1,6 +1,6 @@
 import { ipcRenderer } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import type { StateUpdate } from '../shared/types';
+import type { HistoryEntry, StateUpdate } from '../shared/types';
 
 type Unsubscribe = () => void;
 
@@ -48,8 +48,26 @@ export interface SettingsShape {
     soundEnabled: boolean;
     soundVolume: number;
     theme: 'system' | 'light' | 'dark';
+    caption: CaptionSettings;
   };
-  app: { launchOnStartup: boolean; checkForUpdates: boolean; historyLimit: number };
+  app: {
+    launchOnStartup: boolean;
+    checkForUpdates: boolean;
+    /** Max entries kept by the History window; 0 disables history. */
+    historyLimit: number;
+    /** Keep history on disk between launches (off = memory only). */
+    persistHistory: boolean;
+  };
+}
+
+export interface CaptionSettings {
+  show: boolean;
+  fontSize: number;
+  textColor: string;
+  background: 'none' | 'glass' | 'solid';
+  backgroundColor: string;
+  backgroundOpacity: number;
+  anchorPercent: number;
 }
 
 export type SettingsPatch = {
@@ -67,6 +85,15 @@ export interface HotkeyCheckResult {
   accelerator?: string;
   /** Reason for failure (parse error, conflict, etc). */
   message?: string;
+}
+
+export interface AppInfo {
+  version: string;
+  electron: string;
+  chrome: string;
+  node: string;
+  platform: string;
+  arch: string;
 }
 
 export interface VoiceToTextApi {
@@ -125,6 +152,22 @@ export interface VoiceToTextApi {
   };
   windows: {
     closeSelf(): void;
+    /** Open (or focus) the History window. */
+    openHistory(): void;
+    /** Open (or focus) the Settings window. */
+    openSettings(): void;
+  };
+  history: {
+    list(): Promise<HistoryEntry[]>;
+    remove(id: string): Promise<true>;
+    clear(): Promise<true>;
+    /** Copy one entry's text to the OS clipboard (done in main). */
+    copy(id: string): Promise<true>;
+    onChange(cb: (entries: HistoryEntry[]) => void): Unsubscribe;
+  };
+  app: {
+    /** App version + runtime versions. Sandboxed renderers can't read `process`. */
+    info(): Promise<AppInfo>;
   };
 }
 
@@ -161,6 +204,18 @@ export const api: VoiceToTextApi = {
     preview: () => ipcRenderer.invoke(IPC.vocabulary.preview)
   },
   windows: {
-    closeSelf: () => ipcRenderer.send(IPC.windows.closeSelf)
+    closeSelf: () => ipcRenderer.send(IPC.windows.closeSelf),
+    openHistory: () => ipcRenderer.send(IPC.windows.openHistory),
+    openSettings: () => ipcRenderer.send(IPC.windows.openSettings)
+  },
+  history: {
+    list: () => ipcRenderer.invoke(IPC.history.list),
+    remove: (id) => ipcRenderer.invoke(IPC.history.remove, id),
+    clear: () => ipcRenderer.invoke(IPC.history.clear),
+    copy: (id) => ipcRenderer.invoke(IPC.history.copy, id),
+    onChange: (cb) => subscribe<HistoryEntry[]>(IPC.history.changed, cb)
+  },
+  app: {
+    info: () => ipcRenderer.invoke(IPC.app.info)
   }
 };

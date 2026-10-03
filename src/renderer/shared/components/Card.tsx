@@ -13,9 +13,10 @@ export function Card({ title, description, children }: Props): JSX.Element {
       style={{
         background: tokens.color.bgRaised,
         border: `1px solid ${tokens.color.border}`,
-        borderRadius: tokens.radius.lg,
+        borderRadius: tokens.radius.xl,
         padding: 20,
-        marginBottom: 16
+        marginBottom: 16,
+        boxShadow: 'var(--c-card-shadow)'
       }}
     >
       {title && (

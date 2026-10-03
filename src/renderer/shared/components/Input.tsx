@@ -12,7 +12,7 @@ export function Input({ style, ...rest }: Props): JSX.Element {
         height: 34,
         padding: '0 10px',
         borderRadius: tokens.radius.md,
-        background: tokens.color.bg,
+        background: tokens.color.bgInput,
         border: `1px solid ${tokens.color.border}`,
         color: tokens.color.text,
         outline: 'none',

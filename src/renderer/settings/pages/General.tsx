@@ -3,6 +3,7 @@ import { Card, Field } from '../../shared/components/Card';
 import { Toggle } from '../../shared/components/Toggle';
 import { Select } from '../../shared/components/Select';
 import { Input } from '../../shared/components/Input';
+import { Button } from '../../shared/components/Button';
 
 export function GeneralPage(): JSX.Element {
   const settings = useSettings((s) => s.settings);
@@ -12,7 +13,7 @@ export function GeneralPage(): JSX.Element {
 
   return (
     <>
-      <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>General</h1>
+      <h1>General</h1>
 
       <Card title="Appearance">
         <Field label="Theme" hint="Light, dark, or follow the system.">
@@ -26,28 +27,103 @@ export function GeneralPage(): JSX.Element {
             ]}
           />
         </Field>
-        <Field label="Overlay position" hint="Where the recording overlay appears on screen.">
-          <Select
-            value={settings.ui.overlayPosition}
-            onValueChange={(v) =>
-              void patch({
-                ui: { overlayPosition: v as typeof settings.ui.overlayPosition }
-              })
-            }
-            options={[
-              { value: 'top-right', label: 'Top right' },
-              { value: 'top-left', label: 'Top left' },
-              { value: 'bottom-right', label: 'Bottom right' },
-              { value: 'bottom-left', label: 'Bottom left' }
-            ]}
-          />
-        </Field>
         <Field label="Show waveform" hint="Live audio visualization while recording.">
           <Toggle
             checked={settings.ui.showWaveform}
             onChange={(v) => void patch({ ui: { showWaveform: v } })}
           />
         </Field>
+      </Card>
+
+      <Card
+        title="Caption"
+        description="The transcribed text floats above an anchor line on screen; the status pill sits just below it."
+      >
+        <Field label="Show transcribed text" hint="Turn off to keep only the status pill.">
+          <Toggle
+            checked={settings.ui.caption.show}
+            onChange={(v) => void patch({ ui: { caption: { ...settings.ui.caption, show: v } } })}
+          />
+        </Field>
+        <Field label="Anchor line" hint="Percent of screen height, measured from the top.">
+          <Input
+            type="number"
+            min={30}
+            max={95}
+            value={settings.ui.caption.anchorPercent}
+            onChange={(e) => {
+              const n = Math.max(30, Math.min(95, Number(e.target.value) || 90));
+              void patch({ ui: { caption: { ...settings.ui.caption, anchorPercent: n } } });
+            }}
+          />
+        </Field>
+        <Field label="Font size" hint="Pixels. 28 reads well on a laptop, 36+ on a projector.">
+          <Input
+            type="number"
+            min={14}
+            max={72}
+            value={settings.ui.caption.fontSize}
+            onChange={(e) => {
+              const n = Math.max(14, Math.min(72, Number(e.target.value) || 28));
+              void patch({ ui: { caption: { ...settings.ui.caption, fontSize: n } } });
+            }}
+          />
+        </Field>
+        <Field label="Text colour">
+          <Input
+            type="color"
+            value={settings.ui.caption.textColor}
+            onChange={(e) =>
+              void patch({ ui: { caption: { ...settings.ui.caption, textColor: e.target.value } } })
+            }
+            style={{ padding: 2, width: 64 }}
+          />
+        </Field>
+        <Field label="Background" hint="Transparent, frosted glass, or a solid colour.">
+          <Select
+            value={settings.ui.caption.background}
+            onValueChange={(v) =>
+              void patch({
+                ui: {
+                  caption: { ...settings.ui.caption, background: v as 'none' | 'glass' | 'solid' }
+                }
+              })
+            }
+            options={[
+              { value: 'none', label: 'Transparent' },
+              { value: 'glass', label: 'Frosted glass' },
+              { value: 'solid', label: 'Solid colour' }
+            ]}
+          />
+        </Field>
+        {settings.ui.caption.background !== 'none' && (
+          <>
+            <Field label="Background colour">
+              <Input
+                type="color"
+                value={settings.ui.caption.backgroundColor}
+                onChange={(e) =>
+                  void patch({
+                    ui: { caption: { ...settings.ui.caption, backgroundColor: e.target.value } }
+                  })
+                }
+                style={{ padding: 2, width: 64 }}
+              />
+            </Field>
+            <Field label="Background opacity" hint="0 to 100.">
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={settings.ui.caption.backgroundOpacity}
+                onChange={(e) => {
+                  const n = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                  void patch({ ui: { caption: { ...settings.ui.caption, backgroundOpacity: n } } });
+                }}
+              />
+            </Field>
+          </>
+        )}
       </Card>
 
       <Card title="Sound">
@@ -109,20 +185,51 @@ export function GeneralPage(): JSX.Element {
         </Field>
         <Field
           label="History limit"
-          hint="Maximum recent transcriptions to keep (0 disables history)."
+          hint="Most recent transcriptions to keep. Lowering it drops the oldest entries at once."
         >
-          <Input
-            type="number"
-            min={0}
-            max={500}
-            value={settings.app.historyLimit}
-            onChange={(e) => {
-              const n = Math.max(0, Math.min(500, Number(e.target.value) || 0));
-              void patch({ app: { historyLimit: n } });
-            }}
+          <Select
+            value={String(settings.app.historyLimit)}
+            onValueChange={(v) => void patch({ app: { historyLimit: Number(v) } })}
+            options={historyLimitOptions(settings.app.historyLimit)}
           />
+        </Field>
+        <Field
+          label="Keep history on disk"
+          hint="Off = transcriptions stay in memory and are cleared when the app quits. On = saved to a file on this computer in plain text."
+        >
+          <Toggle
+            checked={settings.app.persistHistory}
+            onChange={(v) => void patch({ app: { persistHistory: v } })}
+          />
+        </Field>
+        <Field label="History window" hint="Browse, copy, or delete recent transcriptions.">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => window.voiceToText.windows.openHistory()}
+          >
+            Open history
+          </Button>
         </Field>
       </Card>
     </>
   );
+}
+
+const HISTORY_LIMITS = [0, 10, 25, 50, 100, 200, 500];
+
+/**
+ * Fixed choices rather than a free number field: the limit trims history the
+ * moment it changes (and rewrites the on-disk copy when persistence is on),
+ * so a half-typed "5" on the way to "50" must never be committed. A value
+ * outside the list (hand-edited settings file) is kept as its own option.
+ */
+function historyLimitOptions(current: number): { value: string; label: string }[] {
+  const values = HISTORY_LIMITS.includes(current)
+    ? HISTORY_LIMITS
+    : [...HISTORY_LIMITS, current].sort((a, b) => a - b);
+  return values.map((n) => ({
+    value: String(n),
+    label: n === 0 ? 'Off' : `${n} entries`
+  }));
 }
