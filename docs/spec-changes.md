@@ -3,6 +3,36 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-10-07 — v0.4.1 — Windows: exe icon, scrambled-window safety net
+
+**Reported:** on Windows the Settings window showed the page `<title>` and
+raw CSS text at the top with every label run together inline; the title
+bar / exe showed Electron's atom icon.
+
+**Root causes (reproduced in Electron 30.5.1 under Xvfb):**
+
+- **Scrambled UI** = Chromium's built-in user-agent stylesheet was not
+  loaded. It lives in `resources.pak` next to the executable; removing
+  that file reproduces the screenshot exactly. The app's own CSS was not
+  the cause — the same build renders correctly with an intact runtime.
+- **Atom icon** = `win.signAndEditExecutable: false`. That flag skips not
+  only signing but also the rcedit step that embeds `icon.ico` and version
+  info into the `.exe` (`app-builder-lib/out/winPackager.js`). Removed;
+  signing is still skipped automatically because no certificate is set.
+  Local Windows builds now need Developer Mode once (README → Build).
+
+**What landed:**
+
+- `src/renderer/shared/base.css` — a `@layer ua-fallback` restating the UA
+  defaults the app relies on (hide head/style/title, block layout
+  elements, list items, select appearance). No-op on a healthy runtime;
+  keeps Settings, History and the overlay usable on a damaged one.
+- `src/main/app/integrity.ts` — startup check for `resources.pak`; logs an
+  error and shows a Thai/English "installation is incomplete, please
+  reinstall" dialog. Unit tested.
+
+---
+
 ## 2026-10-03 — v0.4.0 — History window
 
 **Spec said:** §11.3 sketches a History window for Sprint 4c; the tray
