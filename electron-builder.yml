@@ -90,8 +90,13 @@ win:
     - target: portable
       arch: x64
   artifactName: "${productName}-${version}-${arch}.${ext}"
-  # Don't sign — no cert. Users will see "Unknown publisher" on SmartScreen.
-  signAndEditExecutable: false
+  # No code-signing cert, so users still see "Unknown publisher" on
+  # SmartScreen — electron-builder skips signing automatically when no
+  # CSC_LINK / WIN_CSC_LINK is configured. Do NOT set
+  # `signAndEditExecutable: false`: that also skips the rcedit step that
+  # embeds icon.ico + version info into the .exe, leaving the installed app
+  # (exe, title bar, taskbar, shortcuts) with Electron's default atom icon.
+  # Local Windows builds need Developer Mode once — see README "Build".
 
 nsis:
   oneClick: false

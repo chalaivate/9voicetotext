@@ -1,0 +1,87 @@
+/*
+ * Safety net for Chromium's built-in (user-agent) stylesheet.
+ *
+ * Normally these rules are no-ops: they restate what the browser already
+ * does. They exist because a damaged Electron install (missing / unreadable
+ * resources.pak) drops the UA stylesheet entirely — <head> and <style> text
+ * becomes visible and every <div> collapses inline. With this layer the UI
+ * stays usable; the main process also detects the condition and asks the
+ * user to reinstall (src/main/app/integrity.ts).
+ *
+ * Everything sits in a cascade layer so ANY unlayered app rule, class or
+ * inline style wins over it regardless of specificity.
+ */
+@layer ua-fallback {
+  head,
+  script,
+  style,
+  title,
+  template,
+  meta,
+  link,
+  [hidden] {
+    display: none !important;
+  }
+
+  html,
+  body,
+  div,
+  section,
+  main,
+  aside,
+  nav,
+  header,
+  footer,
+  article,
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  ul,
+  ol,
+  pre,
+  form {
+    display: block;
+  }
+
+  li {
+    display: list-item;
+  }
+
+  ul {
+    list-style-type: disc;
+    margin: 1em 0;
+    padding-left: 40px;
+  }
+
+  strong,
+  b {
+    font-weight: 700;
+  }
+
+  em,
+  i {
+    font-style: italic;
+  }
+
+  a {
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  pre {
+    white-space: pre;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  select {
+    appearance: auto;
+  }
+}
