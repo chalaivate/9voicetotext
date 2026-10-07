@@ -3,105 +3,94 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
-## 2026-10-07 — Windows: scrambled Settings window + missing tray / exe icon
+## 2026-10-03 — v0.4.0 — History window
 
-**Reported:** on Windows the Settings window showed the page `<title>` and
-the raw CSS text at the top, labels ran together inline, selects had no
-arrow; the tray slot was blank (tooltip only); title bar showed Electron's
-atom icon.
-
-**Root causes (reproduced in Electron 30.5.1 under Xvfb):**
-
-- **Scrambled UI** = Chromium's built-in user-agent stylesheet was not
-  loaded. It lives in `resources.pak` next to the executable; removing that
-  file reproduces the screenshot exactly (head/style text visible, every
-  `<div>` inline). The app's own CSS was not the cause — the same build
-  renders correctly with an intact runtime. Likely triggers: an interrupted
-  Electron download in `node_modules/electron/dist`, antivirus quarantine,
-  or a partially copied install folder.
-- **Blank tray** = packaged builds before this branch had no
-  `extraResources`, so `resources/icons` was never shipped (fixed in the
-  previous entry).
-- **Atom icon on the exe / title bar** = `win.signAndEditExecutable: false`
-  in electron-builder.yml. That flag skips not only signing but also the
-  rcedit step that embeds `icon.ico` and version info into the `.exe`
-  (`app-builder-lib/out/winPackager.js`). Removed — signing is still
-  skipped automatically because no certificate is configured.
+**Spec said:** §11.3 sketches a History window for Sprint 4c; the tray
+menu shipped with a disabled "History…" item and `app.historyLimit` was
+stored but never read.
 
 **What landed:**
 
-- `src/renderer/shared/base.css` — a `@layer ua-fallback` restating the UA
-  defaults the app relies on (hide head/style/title, block-level layout
-  elements, list items, select appearance). No-op on a healthy runtime;
-  keeps the UI usable on a damaged one. Imported by both windows.
-- Settings global CSS moved from a React-injected `<style>` into
-  `src/renderer/settings/settings.css` (theme palettes, scrollbar, nav
-  hover, toast keyframes). Theme preference is cached in localStorage and
-  applied before first render (no dark→light flash).
-- `src/main/app/integrity.ts` — startup check for `resources.pak`; logs an
-  error and shows a Thai/English "installation is incomplete, please
-  reinstall" dialog. Unit tested.
-- `src/main/utils/paths.ts` — single resolver for the icons folder (dev:
-  `<repo>/resources/icons`, packaged: `process.resourcesPath/icons`). The
-  Settings window now gets `icon.ico` on Windows / `icon.png` elsewhere,
-  which also fixes the title-bar icon in dev. The tray logs an error if
-  its image comes back empty.
-- Verified: `electron-builder --linux dir` ships `resources/icons` and the
-  packaged app loads the tray icon without error. Windows NSIS build
-  not run here (needs a Windows runner — CI `release.yml`).
+- **`HistoryStore`** (`src/main/history/store.ts`) — keeps the most recent
+  transcriptions newest-first, capped at `app.historyLimit` (0 = off, and
+  existing entries are dropped). Every successful transcription (pasted or
+  copied) is recorded from the controller's `success` broadcast in
+  `src/main/index.ts`.
+- **Privacy default: memory only.** Entries vanish on quit unless the new
+  `app.persistHistory` setting is on, in which case they are saved through
+  electron-store (`history.json`). Turning the setting off wipes the file
+  immediately. Settings → General → App → "Keep history on disk" carries a
+  plain-language warning.
+- **History window** (`src/renderer/history/*`, `src/main/windows/history.ts`)
+  — native title bar like Settings, search box (⌘F), per-entry Copy (done in
+  main via `clipboard.writeText`) and Delete, Clear all, relative timestamps,
+  duration and output badges, empty / off / no-match states, footer that
+  says where the data lives. Opens from the tray ("History…"), from the
+  Settings sidebar ("History" entry) and from Settings → General → App.
+- **IPC**: `history:list/remove/clear/copy` (invoke) and `history:changed`
+  (broadcast); `windows:openHistory`.
+- Unit tests for the store (limits, persistence on/off, change events).
 
----
+## 2026-09-10 — v0.3.0 — Caption-style overlay + streaming hallucination guard
 
-## 2026-09-09 — App icon refresh, overlay redesign, Settings theme + polish
+**What changed (user feedback on v0.2.0):** the top-right card was too busy
+and the transcribed text too small to read from across a classroom. In LIVE
+mode the user's own name ("ชไลเวท") appeared whenever the room went quiet.
 
 **What landed:**
 
-- **New app icon** (`resources/icons/icon.svg`) in 9Expert CI — brand-blue
-  squircle, white microphone capsule resolving into two lime "text lines"
-  (voice → text). `npm run icons` (`scripts/generate-icons.mjs`) renders
-  the SVG with Playwright's Chromium into `icon.png` (1024), `icon-<n>.png`,
-  a multi-size `icon.ico` (PNG entries, 16–256) and `icon.icns`
-  (icp4…ic14) — no ImageMagick / sharp toolchain needed. Tray glyphs are
-  generated by the same script: `tray-<state>.png` + `@2x` (black template
-  for the macOS menu bar) and `tray-<state>-color.png` + `@2x` (brand
-  roundel for Windows/Linux, which have no template-image support and a
-  taskbar that may be light or dark). Electron picks the `@2x` sibling
-  automatically; the old `-16` files are gone.
-- **Packaging bug fixed:** `electron-builder.yml` had no `extraResources`,
-  so packaged builds shipped **no tray icons** (`files` only includes
-  `out/**`). `resources/icons/tray-*.png` now lands in
-  `<app>/resources/icons`, and `src/main/tray/icons.ts` reads from there.
-- **Overlay redesign** (`src/renderer/overlay/`): navy glass card with a
-  state-coloured gradient border + glow, circular state badge (ripple rings
-  while recording, lime/blue spinner while transcribing, pop on success),
-  tabular-numeral timer pill with a blinking live dot, mode-aware hints
-  ("ปล่อยปุ่มเพื่อส่ง" for push-to-talk, auto-stop countdown, etc.), a
-  9-bar equaliser waveform (log-spaced bands, auto-gain, blue→lime) instead
-  of the line oscilloscope, a thin progress line for the 5-minute max, a
-  shimmer bar while the API is busy, and slide-in animation on every show.
-  Window grows from 280×80 to 340×96. `prefers-reduced-motion` respected.
-- **Overlay position setting now works.** Settings → General → Overlay
-  position was stored but the window was always placed top-right.
-  `computeOverlayPosition()` (`src/shared/overlay-position.ts`, unit
-  tested) resolves all four corners against the work area of the display
-  under the cursor.
-- **Theme setting now works.** Settings → General → Theme was stored but
-  the UI was always dark. Colour tokens are now CSS custom properties
-  (`themeCss` in `src/renderer/shared/tokens.ts`) with a light palette;
-  `applyTheme()` stamps `data-theme` on `<html>` and follows the OS when
-  "system" is selected. Main mirrors the choice into
-  `nativeTheme.themeSource` so window chrome / vibrancy / mica follow too.
-- **Settings sidebar** — app logo header, lucide icons per tab, lime
-  active marker, hover state, version footer.
-- **About page** — showed a hard-coded "0.1.0 (Sprint 4a)" and "Copy
-  diagnostic info" referenced `process.versions`, which does not exist in
-  the sandboxed renderer (ReferenceError). New `app:info` IPC returns
-  version / Electron / platform from main.
-- **Tray menu** showed `DEFAULT_HOTKEY` instead of the user's configured
-  combo; now reads settings and rebuilds when the hotkey changes. Tooltip
-  reflects state.
+- **Caption overlay.** The overlay is now a wide transparent strip centred
+  on the display. An invisible anchor line sits at `ui.caption.anchorPercent`
+  of the screen height (default 90% from the top). Transcribed text floats
+  above the line (default 28 px, white, transparent background with a soft
+  shadow); the status pill hangs just below it: coloured dot, English label
+  (Listening / Transcribing / Pasting / Pasted / Copied / Error), a
+  Siri-style layered sine waveform in the centre, timer on the right.
+  No app name, no mode chips.
+- **Configurable caption** (`ui.caption`): show/hide, font size, text colour,
+  background (transparent / frosted glass / solid), background colour and
+  opacity, anchor line percent. Editable on Settings → General → Caption.
+  `ui.overlayPosition` is kept in the schema for compatibility but is no
+  longer used.
+- **Waveform** rewritten as three phase-shifted sinusoids under a
+  raised-cosine envelope, amplitude driven by the mic RMS, glow + core
+  strokes in a lime → white → blue gradient. Idles with a slow breathing
+  motion so the pill never looks frozen.
+- **Streaming hallucination guard.** (1) `ChunkedRecorder` reports the
+  peak RMS of each chunk; the overlay drops silent non-final chunks before
+  they reach the API and turns a silent final chunk into an empty marker.
+  (2) `ChunkedTranscriber` runs `filterHallucinations` with the vocabulary
+  prompt on every chunk, plus a stricter `isVocabularyTermEcho` rule: a
+  chunk that transcribes to exactly one vocabulary term is discarded.
+  Covered by two new unit tests.
+- `OVERLAY.successHideMs` raised from 1 s to 1.5 s so the final caption can
+  be read before it fades.
 
----
+## 2026-09-09 — v0.2.0 — App icon, overlay redesign, theme support
+
+**Spec said:** §11.4 lists the design tokens; the overlay and settings UI
+were implemented as a functional placeholder with a flat coloured pill.
+
+**What landed:**
+
+- **App icon** redesigned (mic + lime sound bars on a Brand Blue gradient).
+  Generated from SVG by `resources/design/gen-icons.mjs` into `.icns`,
+  `.ico`, `.png` and platform-specific tray sets (`@2x`, `-light` for
+  Windows, coloured status dots for recording/processing).
+- **Overlay** rebuilt as a glass card (360×96) with an animated status orb,
+  Thai headline + English chip, mode badge (LIVE / AUTO / PTT), 14-bar
+  gradient frequency visualiser and a processing shimmer bar. Styles live
+  in `src/renderer/overlay/styles.ts`.
+- **Settings** gets a proper sidebar (logo, lucide icons, version footer), a
+  working Light / Dark / System theme via CSS custom properties in
+  `src/renderer/shared/tokens.ts`, and a new About page (real version via
+  the `app:info` IPC, "Built with" toolchain card).
+- **Fixes:** `ui.overlayPosition`, `ui.theme`, `ui.soundVolume` and
+  `app.launchOnStartup` are now honoured; tray menu shows the configured
+  hotkey; tray icons are copied into packaged builds via `extraResources`.
+
+See `docs/ux-review-2026-09.md` for the full review and the remaining
+recommendations.
 
 ## 2026-05-10 — Sprint 4d Phase 4 — Live chunked streaming transcription
 

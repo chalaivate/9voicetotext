@@ -3,7 +3,8 @@ import { BrowserWindow, app, nativeTheme } from 'electron';
 import { APP_NAME } from '@shared/constants';
 import { isMac } from '@main/utils/platform';
 import { logger } from '@main/utils/logger';
-import { appIconPath } from '@main/utils/paths';
+import { hideDockIfNoUiWindows } from './dock';
+import { getSettings } from '@main/store/settings';
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL'];
 
@@ -17,24 +18,25 @@ export class SettingsWindow {
       return this.window;
     }
 
+    const theme = getSettings().ui.theme;
+    // Keep the native title bar (and dialogs) in the same theme as the page.
+    nativeTheme.themeSource = theme;
+    const prefersLight =
+      theme === 'light' || (theme === 'system' && !nativeTheme.shouldUseDarkColors);
+
     const win = new BrowserWindow({
-      width: 800,
-      height: 600,
-      minWidth: 720,
-      minHeight: 540,
+      width: 860,
+      height: 640,
+      minWidth: 760,
+      minHeight: 560,
       title: `${APP_NAME} Settings`,
-      // macOS native traffic lights, hidden inset.
-      titleBarStyle: isMac ? 'hiddenInset' : 'default',
-      // macOS sidebar vibrancy; ignored on Win/Linux.
-      ...(isMac ? { vibrancy: 'sidebar' as const } : {}),
-      // Windows 11 mica; ignored elsewhere.
-      ...(process.platform === 'win32' ? { backgroundMaterial: 'mica' as const } : {}),
+      // Native title bar on every platform. The hidden-inset bar plus
+      // `-webkit-app-region: drag` regions repeatedly broke on macOS (nav
+      // buttons swallowed clicks, or the window could not be dragged at
+      // all), so the window now relies on the OS title bar for moving.
+      titleBarStyle: 'default',
       show: false,
-      // Match the renderer palette so there is no flash before first paint.
-      backgroundColor: nativeTheme.shouldUseDarkColors ? '#13171F' : '#F3F5F9',
-      // Title-bar / taskbar icon. Set explicitly so it is right in dev too,
-      // where the binary is the stock electron executable.
-      icon: appIconPath(),
+      backgroundColor: prefersLight ? '#F4F6FA' : '#13171F',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,
@@ -58,8 +60,8 @@ export class SettingsWindow {
 
     win.on('closed', () => {
       this.window = null;
-      // Hide Dock icon again when no UI windows are open (tray-only mode).
-      if (isMac) app.dock?.hide();
+      // Hide Dock icon again only when no other UI window is still open.
+      hideDockIfNoUiWindows();
     });
 
     this.window = win;

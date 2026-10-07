@@ -1,7 +1,7 @@
-import { app, ipcMain, BrowserWindow } from 'electron';
+import { app, clipboard, ipcMain, BrowserWindow } from 'electron';
 import { fetch } from 'undici';
 import { IPC } from '@shared/ipc-channels';
-import { APP_NAME, TRANSCRIPTION, composeWhisperPrompt } from '@shared/constants';
+import { TRANSCRIPTION, composeWhisperPrompt } from '@shared/constants';
 import { logger } from '@main/utils/logger';
 import type { RecordingController } from '@main/recording/controller';
 import type { HotkeyManager } from '@main/hotkey/manager';
@@ -14,14 +14,24 @@ import {
 } from '@main/store/settings';
 import { setApiKey, hasApiKey, deleteApiKey, getApiKey, maskKey } from '@main/store/secrets';
 import type { SettingsWindow } from '@main/windows/settings';
+import type { HistoryWindow } from '@main/windows/history';
+import type { HistoryStore } from '@main/history/store';
 
 interface IpcDeps {
   controller: RecordingController;
   settingsWindow: SettingsWindow;
+  historyWindow: HistoryWindow;
+  history: HistoryStore;
   hotkey: HotkeyManager;
 }
 
-export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcDeps): void {
+export function registerIpcHandlers({
+  controller,
+  settingsWindow,
+  historyWindow,
+  history,
+  hotkey
+}: IpcDeps): void {
   // ---- Recording (existing) ----------------------------------------------
   ipcMain.on(
     IPC.recording.audio,
@@ -85,19 +95,6 @@ export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcD
       }
     }
   );
-
-  // ---- App info (About page, diagnostics) --------------------------------
-  // The sandboxed renderer has no `process`, so version/runtime facts must
-  // come from main.
-  ipcMain.handle(IPC.app.info, async () => ({
-    name: APP_NAME,
-    version: app.getVersion(),
-    electron: process.versions.electron,
-    chrome: process.versions.chrome,
-    node: process.versions.node,
-    platform: process.platform,
-    arch: process.arch
-  }));
 
   // ---- Settings ----------------------------------------------------------
   ipcMain.handle(IPC.settings.get, async () => getSettings());
@@ -186,9 +183,55 @@ export function registerIpcHandlers({ controller, settingsWindow, hotkey }: IpcD
     );
   });
 
+  // ---- App info (About page) ---------------------------------------------
+  ipcMain.handle(IPC.app.info, async () => ({
+    version: app.getVersion(),
+    electron: process.versions.electron ?? '?',
+    chrome: process.versions.chrome ?? '?',
+    node: process.versions.node ?? '?',
+    platform: process.platform,
+    arch: process.arch
+  }));
+
+  // ---- History -----------------------------------------------------------
+  ipcMain.handle(IPC.history.list, async () => history.list());
+
+  ipcMain.handle(IPC.history.remove, async (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('history:remove requires a string id');
+    history.remove(id);
+    return true;
+  });
+
+  ipcMain.handle(IPC.history.clear, async () => {
+    history.clear();
+    return true;
+  });
+
+  // Copy runs in main so the sandboxed renderer never needs clipboard access
+  // and the text does not round-trip through the page.
+  ipcMain.handle(IPC.history.copy, async (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('history:copy requires a string id');
+    const entry = history.get(id);
+    if (!entry) throw new Error('history entry not found');
+    clipboard.writeText(entry.text);
+    return true;
+  });
+
+  // Broadcast `history:changed` with the full list after any mutation — the
+  // History window re-renders from it, the same way settings pages do.
+  history.onChange((entries) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send(IPC.history.changed, entries);
+    }
+  });
+
   // ---- Window open requests from renderer --------------------------------
   ipcMain.on(IPC.windows.openSettings, () => {
     settingsWindow.open();
+  });
+
+  ipcMain.on(IPC.windows.openHistory, () => {
+    historyWindow.open();
   });
 
   ipcMain.on(IPC.windows.closeSelf, (event) => {

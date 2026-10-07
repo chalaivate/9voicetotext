@@ -6,7 +6,11 @@ Built on Electron + TypeScript + React + Tailwind, powered by OpenAI Whisper.
 Hold a global hotkey, speak Thai/English/mixed, release — the transcribed text
 is pasted at your cursor in any app (VS Code, Claude Code, Word, Slack, etc.).
 
-> **Status:** Sprint 4d Phase 2 + Sprint 5 Packaging complete (May 2026).
+> **Status:** v0.4.0 (October 2026) — new app icon, caption-style overlay
+> (large centred text above a configurable anchor line, minimal status pill
+> with a live waveform), settings UI with Light/Dark theme, streaming
+> hallucination guard, and a History window (memory-only by default). See [`docs/ux-review-2026-09.md`](docs/ux-review-2026-09.md).
+> Sprint 4d Phase 2 + Sprint 5 Packaging complete (May 2026).
 > Daily-driver-ready with **3 hotkey modes** (toggle, push-to-talk, **auto-stop on
 > silence**), **gpt-4o-transcribe** as default model, hallucination filter,
 > custom vocabulary, clipboard-only output mode for paste-blocking apps, and
@@ -40,26 +44,31 @@ npm run typecheck    # tsc --noEmit on main + renderer
 npm run lint         # eslint
 npm run format       # prettier --write
 npm test             # vitest run
-npm run icons        # regenerate app + tray icons from resources/icons/icon.svg
 ```
-
-The app icon is a single SVG (`resources/icons/icon.svg`). `npm run icons`
-renders it with Playwright's bundled Chromium into `icon.png`, `icon.ico`,
-`icon.icns` and the tray glyphs — no ImageMagick required. If Playwright's
-browser is not downloaded, point the script at any Chromium binary with
-`ICON_CHROMIUM_PATH=/path/to/chrome npm run icons`.
 
 When `npm run dev` is running:
 
 - A tray/menu-bar icon appears (microphone glyph).
 - Press **Ctrl+Cmd+Space** (macOS) or **Ctrl+Alt+Space** (Windows) — start beep,
-  recording overlay appears top-right with a live waveform.
-- Speak.
-- Press the hotkey again — stop beep, overlay turns blue (processing).
+  a small translucent "Listening" pill appears centred near the bottom of the
+  screen with a live waveform and timer.
+- Speak. In streaming mode the words appear as large captions just above the
+  pill while you talk.
+- Press the hotkey again — stop beep, the pill switches to "Transcribing".
 - Within ~2s the transcribed text is pasted at your cursor in whatever app
-  has focus. Overlay flashes green for 1s and auto-hides.
+  has focus. The caption shows the final text with a "Pasted" pill for 1.5s
+  and auto-hides. Caption size, colour, background and position are under
+  Settings → General → Caption.
 - On error (no API key, network, paste blocked) the overlay turns orange with
   a Thai/English explanation and auto-hides after 5s.
+
+| Listening                                        | Transcribing                                 | Done                                      |
+| ------------------------------------------------ | -------------------------------------------- | ----------------------------------------- |
+| ![](docs/screenshots/overlay-recording-live.png) | ![](docs/screenshots/overlay-processing.png) | ![](docs/screenshots/overlay-success.png) |
+
+- Right-click the tray → **History…** to see, search, copy or delete recent
+  transcriptions. History lives in memory only unless you turn on
+  **Settings → General → Keep history on disk**.
 - Right-click the tray → **Quit 9VoiceToText** to exit.
 
 **macOS first-run:** the first paste will trigger a permission prompt:
@@ -72,6 +81,16 @@ silently and you'll see an orange overlay asking you to paste manually
 **macOS hotkey conflict:** `Ctrl+Cmd+Space` is bound by default to the system
 Character Picker. If the hotkey appears to do nothing, disable it at
 **System Settings → Keyboard → Keyboard Shortcuts → Input Sources**.
+
+**Native module mismatch after packaging.** `npm run build:mac` rebuilds
+`keytar` and `uiohook-napi` for each target arch and leaves the last one in
+`node_modules`. If `npm run dev` then fails with
+`incompatible architecture (have 'x86_64', need 'arm64')`, restore the host
+build:
+
+```bash
+npm run rebuild:native
+```
 
 ## Install (end users)
 
@@ -102,22 +121,6 @@ The `build:mac` script must run on macOS; `build:win` must run on Windows
 Use the GitHub Actions release workflow at `.github/workflows/release.yml`
 to build both in parallel — push a `v*.*.*` tag and a draft GitHub Release
 appears with all artifacts attached.
-
-**Windows local build — `Cannot create symbolic link : A required privilege
-is not held by the client`.** `build:win` embeds the app icon into the
-`.exe` with rcedit, which electron-builder ships inside its `winCodeSign`
-archive. That archive contains macOS symlinks, and Windows only lets a
-normal user create symlinks when **Developer Mode** is on. Fix once per
-machine, then re-run `npm run build:win`:
-
-- **Recommended:** Settings → System → For developers → **Developer Mode: On**.
-- **Or:** run the terminal **as Administrator** for one `npm run build:win`.
-  The extracted tools are cached in
-  `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign`, so later builds
-  work from a normal terminal.
-
-Do not "fix" this with `win.signAndEditExecutable: false`: that skips the
-icon step and the installed app shows Electron's default icon.
 
 ## Project layout (per spec Section 7)
 

@@ -69,6 +69,13 @@ export interface ChunkPayload {
   index: number;
   isFinal: boolean;
   durationMs: number;
+  /**
+   * Peak RMS observed while THIS chunk was recording (0..1). Lets the
+   * caller skip silent chunks instead of handing them to Whisper, which
+   * otherwise hallucinates vocabulary-prompt terms (e.g. the user's own
+   * name) into the interim text.
+   */
+  peakRms: number;
 }
 
 export interface ChunkedRecorderCallbacks {
@@ -145,6 +152,8 @@ export async function startChunkedRecording(
   // called. Poll at 10 Hz against the shared analyser node — independent
   // of the recorder rotations.
   let maxRms = 0;
+  /** Peak RMS for the chunk currently being recorded; reset on rotation. */
+  let chunkPeakRms = 0;
   const rmsData = new Uint8Array(analyser.fftSize);
   const rmsPollHandle = window.setInterval(() => {
     analyser.getByteTimeDomainData(rmsData);
@@ -155,6 +164,7 @@ export async function startChunkedRecording(
     }
     const rms = Math.sqrt(sumSq / rmsData.length);
     if (rms > maxRms) maxRms = rms;
+    if (rms > chunkPeakRms) chunkPeakRms = rms;
   }, 100);
   /**
    * Promise of the last chunk's `onstop` handler. Each restart awaits the
@@ -181,6 +191,7 @@ export async function startChunkedRecording(
     currentRecorder = recorder;
     currentChunks = [];
     currentStartedAt = performance.now();
+    chunkPeakRms = 0;
 
     recorder.addEventListener('dataavailable', (e) => {
       if (e.data && e.data.size > 0) currentChunks.push(e.data);
@@ -192,6 +203,7 @@ export async function startChunkedRecording(
         const durationMs = performance.now() - currentStartedAt;
         const myIndex = chunkIndex++;
         const isFinal = stopRequested || cancelled;
+        const peakRms = chunkPeakRms;
         const mimeType = recorder.mimeType || 'audio/webm';
         const chunks = currentChunks;
         currentChunks = [];
@@ -218,7 +230,7 @@ export async function startChunkedRecording(
         if (hasAudio) {
           try {
             void new Blob(chunks, { type: mimeType }).arrayBuffer().then((data) => {
-              cb.onChunk({ data, mimeType, index: myIndex, isFinal, durationMs });
+              cb.onChunk({ data, mimeType, index: myIndex, isFinal, durationMs, peakRms });
             });
           } catch (err) {
             cb.onError?.(err as Error);
@@ -230,7 +242,8 @@ export async function startChunkedRecording(
                 mimeType,
                 index: myIndex,
                 isFinal: true,
-                durationMs
+                durationMs,
+                peakRms
               });
             }
           }
@@ -243,7 +256,8 @@ export async function startChunkedRecording(
             mimeType,
             index: myIndex,
             isFinal: true,
-            durationMs
+            durationMs,
+            peakRms
           });
         }
 

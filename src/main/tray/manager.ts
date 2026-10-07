@@ -1,23 +1,20 @@
 import { Menu, Tray, app } from 'electron';
-import { APP_NAME, DEFAULT_HOTKEY } from '@shared/constants';
-import type { AppState } from '@shared/types';
+import { APP_NAME } from '@shared/constants';
+import type { AppState, HotkeyMode } from '@shared/types';
 import { logger } from '@main/utils/logger';
 import { trayIcon } from './icons';
 
 export interface TrayDeps {
   openSettings: () => void;
   openHistory?: () => void;
-  /** Current hotkey combo from settings (falls back to DEFAULT_HOTKEY). */
-  getHotkey?: () => string;
+  /** Current hotkey combo + mode from settings (shown in the menu). */
+  getHotkey: () => { combo: string; mode: HotkeyMode };
 }
 
-const STATE_LABEL: Record<AppState, string> = {
-  idle: 'Idle',
-  recording: 'Recording…',
-  processing: 'Processing…',
-  injecting: 'Injecting…',
-  success: 'Idle',
-  error: 'Error'
+const modeLabel: Record<HotkeyMode, string> = {
+  toggle: 'Toggle',
+  'push-to-talk': 'Push-to-talk',
+  'auto-stop': 'Auto-stop on silence'
 };
 
 export class TrayManager {
@@ -37,7 +34,6 @@ export class TrayManager {
     if (!this.tray) return;
     this.lastState = state;
     this.tray.setImage(trayIcon(state));
-    this.tray.setToolTip(state === 'idle' ? APP_NAME : `${APP_NAME} — ${STATE_LABEL[state]}`);
     this.refreshMenu(state);
   }
 
@@ -56,13 +52,22 @@ export class TrayManager {
     const deps = this.deps;
     if (!deps) return;
 
-    const hotkey = deps.getHotkey?.() || DEFAULT_HOTKEY;
+    const stateLabel: Record<AppState, string> = {
+      idle: 'Idle',
+      recording: 'Recording…',
+      processing: 'Processing…',
+      injecting: 'Injecting…',
+      success: 'Idle',
+      error: 'Error'
+    };
 
+    const hotkey = deps.getHotkey();
     const menu = Menu.buildFromTemplate([
       { label: APP_NAME, enabled: false },
       { type: 'separator' },
-      { label: `Status: ${STATE_LABEL[state]}`, enabled: false },
-      { label: `Hotkey: ${hotkey}`, enabled: false },
+      { label: `Status: ${stateLabel[state]}`, enabled: false },
+      { label: `Hotkey: ${prettyAccelerator(hotkey.combo)}`, enabled: false },
+      { label: `Mode: ${modeLabel[hotkey.mode]}`, enabled: false },
       { type: 'separator' },
       {
         label: 'Settings…',
@@ -84,4 +89,21 @@ export class TrayManager {
 
     this.tray.setContextMenu(menu);
   }
+}
+
+/** `Control+Command+Space` → `⌃ ⌘ Space` on macOS, `Ctrl + Alt + Space` elsewhere. */
+function prettyAccelerator(combo: string): string {
+  if (process.platform === 'darwin') {
+    return combo
+      .replace(/Control|Ctrl/g, '⌃')
+      .replace(/Command|Cmd/g, '⌘')
+      .replace(/Alt|Option/g, '⌥')
+      .replace(/Shift/g, '⇧')
+      .split('+')
+      .join(' ');
+  }
+  return combo
+    .replace(/Control/g, 'Ctrl')
+    .split('+')
+    .join(' + ');
 }

@@ -61,7 +61,7 @@ export function AudioPage(): JSX.Element {
 
   return (
     <>
-      <h1 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 24px' }}>Audio</h1>
+      <h1>Audio</h1>
 
       <Card title="Microphone" description="Select which input to record from.">
         {permission === 'denied' && (

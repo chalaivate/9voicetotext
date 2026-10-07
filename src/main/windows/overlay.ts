@@ -1,20 +1,13 @@
 import { join } from 'node:path';
 import { BrowserWindow, screen } from 'electron';
 import { OVERLAY } from '@shared/constants';
-import { computeOverlayPosition, type OverlayPosition } from '@shared/overlay-position';
 import { logger } from '@main/utils/logger';
+import { getSettings } from '@main/store/settings';
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL'];
 
-export interface OverlayWindowDeps {
-  /** Which screen corner the user picked in Settings → General. */
-  getPosition?: () => OverlayPosition;
-}
-
 export class OverlayWindow {
   private window: BrowserWindow | null = null;
-
-  constructor(private readonly deps: OverlayWindowDeps = {}) {}
 
   ensure(): BrowserWindow {
     if (this.window && !this.window.isDestroyed()) return this.window;
@@ -61,7 +54,7 @@ export class OverlayWindow {
 
   show(): void {
     const win = this.ensure();
-    this.positionAtCorner(win);
+    this.positionForSettings(win);
     win.showInactive();
   }
 
@@ -89,21 +82,24 @@ export class OverlayWindow {
   }
 
   /**
-   * Place the overlay in the configured corner of whichever display the
-   * mouse cursor is on (multi-monitor: follow the user, not the primary).
+   * Centre the overlay strip horizontally on the display that holds the
+   * cursor, and align its internal anchor line with
+   * `ui.caption.anchorPercent` of that display's work area (default 90%
+   * from the top). Caption text sits above the line, the status pill below.
    */
-  private positionAtCorner(win: BrowserWindow): void {
+  private positionForSettings(win: BrowserWindow): void {
     try {
+      const anchorPercent = getSettings().ui.caption.anchorPercent;
       const cursor = screen.getCursorScreenPoint();
       const display = screen.getDisplayNearestPoint(cursor);
-      const position = this.deps.getPosition?.() ?? 'top-right';
-      const { x, y } = computeOverlayPosition(
-        display.workArea,
-        position,
-        { width: OVERLAY.width, height: OVERLAY.height },
-        OVERLAY.edgeOffset
+      const { x, y, width, height } = display.workArea;
+      const winW = Math.round(
+        Math.min(OVERLAY.maxWidth, Math.max(OVERLAY.minWidth, width * OVERLAY.widthFraction))
       );
-      win.setPosition(x, y, false);
+      const lineY = y + Math.round((height * anchorPercent) / 100);
+      const winX = x + Math.round((width - winW) / 2);
+      const winY = lineY - OVERLAY.captionAreaHeight;
+      win.setBounds({ x: winX, y: winY, width: winW, height: OVERLAY.height }, false);
     } catch (err) {
       logger.warn('overlay positioning failed', { err: (err as Error).message });
     }

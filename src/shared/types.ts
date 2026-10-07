@@ -50,3 +50,20 @@ export interface TranscribeErrorPayload {
 export type TranscribeResponse =
   | { ok: true; result: TranscribeResult }
   | { ok: false; error: TranscribeErrorPayload };
+
+/**
+ * One transcription kept by the History window. Entries live in memory by
+ * default and are written to disk only when `app.persistHistory` is on.
+ */
+export interface HistoryEntry {
+  /** Opaque unique id (monotonic, main-process generated). */
+  id: string;
+  /** Final text as injected / copied. */
+  text: string;
+  /** Unix epoch ms when the transcription completed. */
+  createdAt: number;
+  /** Recording length in ms, 0 when unknown. */
+  durationMs: number;
+  /** Where the text went: pasted at the cursor, or clipboard only. */
+  output: 'paste' | 'clipboard' | 'both';
+}
