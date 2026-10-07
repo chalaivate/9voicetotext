@@ -103,6 +103,22 @@ Use the GitHub Actions release workflow at `.github/workflows/release.yml`
 to build both in parallel — push a `v*.*.*` tag and a draft GitHub Release
 appears with all artifacts attached.
 
+**Windows local build — `Cannot create symbolic link : A required privilege
+is not held by the client`.** `build:win` embeds the app icon into the
+`.exe` with rcedit, which electron-builder ships inside its `winCodeSign`
+archive. That archive contains macOS symlinks, and Windows only lets a
+normal user create symlinks when **Developer Mode** is on. Fix once per
+machine, then re-run `npm run build:win`:
+
+- **Recommended:** Settings → System → For developers → **Developer Mode: On**.
+- **Or:** run the terminal **as Administrator** for one `npm run build:win`.
+  The extracted tools are cached in
+  `%LOCALAPPDATA%\electron-builder\Cache\winCodeSign`, so later builds
+  work from a normal terminal.
+
+Do not "fix" this with `win.signAndEditExecutable: false`: that skips the
+icon step and the installed app shows Electron's default icon.
+
 ## Project layout (per spec Section 7)
 
 ```
