@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { AudioLines, BookA, Info, Keyboard, Mic, SlidersHorizontal } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { applyTheme, themeCss, tokens } from '../shared/tokens';
+import { applyTheme, tokens } from '../shared/tokens';
 import { ToastHost } from '../shared/components/Toast';
 import { Logo } from '../shared/components/Logo';
 import { useSettings } from '../shared/use-settings';
@@ -34,7 +34,9 @@ export default function App(): JSX.Element {
   const [active, setActive] = useState<TabId>('general');
   const load = useSettings((s) => s.load);
   const loaded = useSettings((s) => s.loaded);
-  const themePref = useSettings((s) => s.settings?.ui.theme ?? 'system');
+  // undefined until settings arrive — main.tsx already painted the cached
+  // theme, so don't overwrite it with a default in the meantime.
+  const themePref = useSettings((s) => s.settings?.ui.theme);
 
   useEffect(() => {
     void load();
@@ -43,6 +45,7 @@ export default function App(): JSX.Element {
   // Theme: follow Settings → General → Theme, and re-resolve when the OS
   // flips between light/dark while "system" is selected.
   useEffect(() => {
+    if (!themePref) return;
     applyTheme(themePref);
     if (themePref !== 'system') return;
     const mql = window.matchMedia('(prefers-color-scheme: dark)');
@@ -53,20 +56,6 @@ export default function App(): JSX.Element {
 
   return (
     <>
-      <style>{`
-        ${themeCss}
-        @keyframes toastIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        body, html, #root { margin: 0; padding: 0; height: 100vh; background: ${tokens.color.bg}; color: ${tokens.color.text}; font-family: ${tokens.font.sans}; transition: background 160ms ease, color 160ms ease; }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-thumb { background: ${tokens.color.border}; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: ${tokens.color.slate}; }
-        .nav-item:hover { background: ${tokens.color.bgHover} !important; color: ${tokens.color.text} !important; }
-        .nav-item:focus-visible { outline: 2px solid ${tokens.color.brandBlue}; outline-offset: -2px; }
-        a { color: ${tokens.color.link}; }
-      `}</style>
       <div style={layout}>
         <Sidebar active={active} onSelect={setActive} />
         <main style={main}>

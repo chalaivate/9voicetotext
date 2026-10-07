@@ -41,6 +41,7 @@ extraResources:
     filter:
       - "tray-*.png"
       - "icon.png"
+      - "icon.ico"
 
 # ---- macOS ---------------------------------------------------------------
 mac:
@@ -85,8 +86,12 @@ win:
     - target: portable
       arch: x64
   artifactName: "${productName}-${version}-${arch}.${ext}"
-  # Don't sign — no cert. Users will see "Unknown publisher" on SmartScreen.
-  signAndEditExecutable: false
+  # No code-signing cert, so users still see "Unknown publisher" on
+  # SmartScreen — electron-builder skips signing automatically when no
+  # CSC_LINK / WIN_CSC_LINK is configured. Do NOT set
+  # `signAndEditExecutable: false`: that also skips the rcedit step that
+  # embeds icon.ico + version info into the .exe, which left the installed
+  # app (exe, taskbar, shortcuts) with Electron's default atom icon.
 
 nsis:
   oneClick: false

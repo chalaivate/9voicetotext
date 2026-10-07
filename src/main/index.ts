@@ -1,4 +1,4 @@
-import { app, nativeTheme } from 'electron';
+import { app, dialog, nativeTheme } from 'electron';
 import { APP_ID, APP_NAME, composeWhisperPrompt } from '@shared/constants';
 import { IPC } from '@shared/ipc-channels';
 import { logger } from '@main/utils/logger';
@@ -6,6 +6,7 @@ import { isMac } from '@main/utils/platform';
 import { getEnv } from '@main/utils/env';
 import { ensureSingleInstance } from '@main/app/single-instance';
 import { setupLifecycle } from '@main/app/lifecycle';
+import { checkChromiumResources } from '@main/app/integrity';
 import { TrayManager } from '@main/tray/manager';
 import { HotkeyManager } from '@main/hotkey/manager';
 import { stopUiohook } from '@main/hotkey/uiohook-bridge';
@@ -96,6 +97,26 @@ if (ensureSingleInstance()) {
       arch: process.arch,
       electron: process.versions.electron
     });
+
+    // A damaged Electron runtime (missing resources.pak) renders every
+    // window without Chromium's default stylesheet. Tell the user to
+    // reinstall rather than leave them with a scrambled Settings window.
+    const integrity = checkChromiumResources();
+    if (!integrity.ok) {
+      logger.error('chromium resources missing — installation is damaged', {
+        missing: integrity.missing
+      });
+      void dialog.showMessageBox({
+        type: 'warning',
+        title: APP_NAME,
+        message: 'การติดตั้งไม่สมบูรณ์ / Installation is incomplete',
+        detail:
+          `ไม่พบไฟล์ที่จำเป็นของ Electron ทำให้หน้าจอแสดงผลผิดเพี้ยน กรุณาติดตั้ง ${APP_NAME} ใหม่ ` +
+          '(ถ้ารันจาก source: ลบ node_modules/electron แล้วรัน npm install ใหม่)\n\n' +
+          `A required Electron runtime file is missing, so windows will render incorrectly. ` +
+          `Please reinstall ${APP_NAME}.\n\nMissing: ${integrity.missing.join(', ')}`
+      });
+    }
 
     // Eagerly read settings + warn if neither keychain nor env has an API key.
     const settings = getSettings();

@@ -3,6 +3,55 @@
 Tracks deviations from `VoiceFlow-TechnicalSpec.docx`. Each entry documents
 what the spec said, what we actually did, and why.
 
+## 2026-10-07 — Windows: scrambled Settings window + missing tray / exe icon
+
+**Reported:** on Windows the Settings window showed the page `<title>` and
+the raw CSS text at the top, labels ran together inline, selects had no
+arrow; the tray slot was blank (tooltip only); title bar showed Electron's
+atom icon.
+
+**Root causes (reproduced in Electron 30.5.1 under Xvfb):**
+
+- **Scrambled UI** = Chromium's built-in user-agent stylesheet was not
+  loaded. It lives in `resources.pak` next to the executable; removing that
+  file reproduces the screenshot exactly (head/style text visible, every
+  `<div>` inline). The app's own CSS was not the cause — the same build
+  renders correctly with an intact runtime. Likely triggers: an interrupted
+  Electron download in `node_modules/electron/dist`, antivirus quarantine,
+  or a partially copied install folder.
+- **Blank tray** = packaged builds before this branch had no
+  `extraResources`, so `resources/icons` was never shipped (fixed in the
+  previous entry).
+- **Atom icon on the exe / title bar** = `win.signAndEditExecutable: false`
+  in electron-builder.yml. That flag skips not only signing but also the
+  rcedit step that embeds `icon.ico` and version info into the `.exe`
+  (`app-builder-lib/out/winPackager.js`). Removed — signing is still
+  skipped automatically because no certificate is configured.
+
+**What landed:**
+
+- `src/renderer/shared/base.css` — a `@layer ua-fallback` restating the UA
+  defaults the app relies on (hide head/style/title, block-level layout
+  elements, list items, select appearance). No-op on a healthy runtime;
+  keeps the UI usable on a damaged one. Imported by both windows.
+- Settings global CSS moved from a React-injected `<style>` into
+  `src/renderer/settings/settings.css` (theme palettes, scrollbar, nav
+  hover, toast keyframes). Theme preference is cached in localStorage and
+  applied before first render (no dark→light flash).
+- `src/main/app/integrity.ts` — startup check for `resources.pak`; logs an
+  error and shows a Thai/English "installation is incomplete, please
+  reinstall" dialog. Unit tested.
+- `src/main/utils/paths.ts` — single resolver for the icons folder (dev:
+  `<repo>/resources/icons`, packaged: `process.resourcesPath/icons`). The
+  Settings window now gets `icon.ico` on Windows / `icon.png` elsewhere,
+  which also fixes the title-bar icon in dev. The tray logs an error if
+  its image comes back empty.
+- Verified: `electron-builder --linux dir` ships `resources/icons` and the
+  packaged app loads the tray icon without error. Windows NSIS build
+  not run here (needs a Windows runner — CI `release.yml`).
+
+---
+
 ## 2026-09-09 — App icon refresh, overlay redesign, Settings theme + polish
 
 **What landed:**

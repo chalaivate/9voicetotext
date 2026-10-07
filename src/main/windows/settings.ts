@@ -3,6 +3,7 @@ import { BrowserWindow, app, nativeTheme } from 'electron';
 import { APP_NAME } from '@shared/constants';
 import { isMac } from '@main/utils/platform';
 import { logger } from '@main/utils/logger';
+import { appIconPath } from '@main/utils/paths';
 
 const isDev = !!process.env['ELECTRON_RENDERER_URL'];
 
@@ -31,8 +32,9 @@ export class SettingsWindow {
       show: false,
       // Match the renderer palette so there is no flash before first paint.
       backgroundColor: nativeTheme.shouldUseDarkColors ? '#13171F' : '#F3F5F9',
-      // Dock / taskbar icon in dev (packaged builds embed it in the binary).
-      icon: join(__dirname, '../../resources/icons/icon.png'),
+      // Title-bar / taskbar icon. Set explicitly so it is right in dev too,
+      // where the binary is the stock electron executable.
+      icon: appIconPath(),
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,

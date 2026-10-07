@@ -3,8 +3,9 @@
  *
  * Colours are exposed as CSS custom properties so the Settings → General →
  * Theme option (system / light / dark) can swap the whole palette at runtime
- * without touching the components. `themeCss` below defines both palettes;
- * `applyTheme()` stamps `data-theme` on <html>.
+ * without touching the components. Both palettes live in
+ * src/renderer/settings/settings.css; `applyTheme()` stamps `data-theme` on
+ * <html>.
  */
 export const tokens = {
   color: {
@@ -45,41 +46,31 @@ export const tokens = {
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
-/** Palette definitions. Dark is the default; light overrides via data-theme. */
-export const themeCss = `
-:root {
-  color-scheme: dark;
-  --c-brand-blue: #2486FF;
-  --c-brand-blue-dark: #005CFF;
-  --c-brand-blue-light: #48B0FF;
-  --c-link: #48B0FF;
-  --c-bg: #13171F;
-  --c-bg-raised: #1B2029;
-  --c-bg-sidebar: #0F141B;
-  --c-bg-hover: rgba(255, 255, 255, 0.05);
-  --c-border: #2A313D;
-  --c-text: #E8ECF2;
-  --c-text-dim: #9BA4B0;
-  --c-text-faint: #6B7280;
-}
-:root[data-theme='light'] {
-  color-scheme: light;
-  --c-link: #005CFF;
-  --c-bg: #F3F5F9;
-  --c-bg-raised: #FFFFFF;
-  --c-bg-sidebar: #E9EEF6;
-  --c-bg-hover: rgba(13, 27, 42, 0.05);
-  --c-border: #D8DEE8;
-  --c-text: #0D1B2A;
-  --c-text-dim: #5B6675;
-  --c-text-faint: #8A94A3;
-}
-`;
+const THEME_CACHE_KEY = '9vtt.theme';
 
-/** Resolve the preference against the OS and stamp it on <html>. */
+/**
+ * Resolve the preference against the OS and stamp it on <html>. The
+ * preference is cached so the next launch can paint the right palette
+ * before settings arrive over IPC (no dark→light flash).
+ */
 export function applyTheme(pref: ThemePreference): 'light' | 'dark' {
   const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true;
   const resolved = pref === 'system' ? (systemDark ? 'dark' : 'light') : pref;
   document.documentElement.dataset['theme'] = resolved;
+  try {
+    localStorage.setItem(THEME_CACHE_KEY, pref);
+  } catch {
+    // storage unavailable — the flash-free first paint is a nicety only
+  }
   return resolved;
+}
+
+/** Apply the cached preference synchronously, before React renders. */
+export function applyCachedTheme(): void {
+  try {
+    const cached = localStorage.getItem(THEME_CACHE_KEY);
+    if (cached === 'light' || cached === 'dark' || cached === 'system') applyTheme(cached);
+  } catch {
+    // ignore
+  }
 }
